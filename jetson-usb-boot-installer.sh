@@ -65,6 +65,17 @@ if [[ "$CONFIRM" != "yes" ]]; then
   error_exit "User did not confirm disk wipe. Aborting."
 fi
 
+log "💡 Unmounting any mounted partitions on $USB_DEV..."
+MOUNTED_PARTS=$(lsblk -nr "$USB_DEV" | awk '{print $1}' | grep -E '^.+[0-9]+$')
+
+for part in $MOUNTED_PARTS; do
+  MOUNTPOINT=$(lsblk -nr "/dev/$part" -o MOUNTPOINT)
+  if [ -n "$MOUNTPOINT" ]; then
+    log "🔌 Unmounting /dev/$part from $MOUNTPOINT..."
+    sudo umount "/dev/$part"
+  fi
+done
+
 log "📦 Creating partition on $USB_DEV..."
 sudo parted "$USB_DEV" --script mklabel gpt mkpart primary ext4 0% 100% > /dev/null
 
