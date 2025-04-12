@@ -100,7 +100,7 @@ log "📊 Estimated total files: $TOTAL_FILES"
 
 sudo find / -xdev \( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \) -prune -o -print0 \
   | pv -0 -l -s "$TOTAL_FILES" \
-  | sudo cpio -0 -pdm "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
+  | sudo cpio --null --quiet -pdm --no-preserve-owner "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
 
 log "📄 Copying kernel modules to USB..."
 if [ -d "/lib/modules/$KERNEL_VERSION" ]; then
