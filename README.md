@@ -20,10 +20,22 @@ This project provides a safe, interactive script to install the root filesystem 
 ## 🧰 Requirements
 
 - NVIDIA Jetson Nano (4GB or 2GB)
-- JetPack 4.5+ (Ubuntu-based)
-- A working microSD card with Jetson OS
-- USB 3.0 flash drive or SSD (16GB+ recommended)
-- Internet access (for initramfs on first run)
+- JetPack 4.5+ freshly installed
+- A USB 3.0 flash drive or SSD (≥16GB recommended)
+- Internet connection (for initramfs and optional package installation)
+
+---
+
+## 📋 Initial Setup (JetPack Fresh Install)
+
+Before running the script, ensure your Jetson Nano system is updated and key packages are installed:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y rsync parted initramfs-tools
+```
+
+⚠️ If `initramfs-tools` is not available on your JetPack image (older versions), install `busybox` and `initramfs` alternatives or refer to the [JetsonHacks guide](https://jetsonhacks.com/2021/03/10/jetson-nano-boot-from-usb/).
 
 ---
 
@@ -32,7 +44,7 @@ This project provides a safe, interactive script to install the root filesystem 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/trvqhuy/jetson-root-on-usb.git
+git clone https://github.com/<your-username>/jetson-root-on-usb.git
 cd jetson-root-on-usb
 ```
 
@@ -56,7 +68,7 @@ The script will:
 
 ## 🔄 Reverting Back to SD Card Boot
 
-If you ever want to boot back from the microSD card:
+To revert to booting from microSD card:
 
 ```bash
 sudo cp /boot/extlinux/extlinux.conf.backup /boot/extlinux/extlinux.conf
