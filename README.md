@@ -53,8 +53,8 @@ cd jetson-root-on-usb
 ### 2. Run the Script (Interactive Mode)
 
 ```bash
-chmod +x usb-root-setup.sh
-sudo ./usb-root-setup.sh
+chmod +x jetson-usb-boot-installer.sh
+sudo ./jetson-usb-boot-installer.sh
 ```
 
 - Prompts for USB device (defaults to `sda` after 10s)
@@ -70,7 +70,7 @@ sudo ./usb-root-setup.sh
 To run non-interactively with all default values:
 
 ```bash
-sudo ./usb-root-setup.sh --auto
+sudo ./jetson-usb-boot-installer.sh --auto
 ```
 
 Ideal for automation, CI pipelines, or flashing farm use.
