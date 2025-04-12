@@ -44,7 +44,7 @@ sudo apt install -y rsync parted initramfs-tools
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/jetson-root-on-usb.git
+git clone https://github.com/trvqhuy/jetson-root-on-usb.git
 cd jetson-root-on-usb
 ```
 
