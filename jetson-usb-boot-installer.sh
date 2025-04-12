@@ -85,7 +85,7 @@ log "📂 Mounting $USB_PART to $MOUNT_POINT..."
 sudo mkdir -p "$MOUNT_POINT"
 sudo mount "$USB_PART" "$MOUNT_POINT"
 
-log "🔄 Copying root filesystem to USB using rsync with progress..."
+log "🔄 Copying root filesystem to USB using rsync..."
 sudo rsync -aAXh --info=progress2 \
   --exclude={"/mnt","/proc","/sys","/dev/pts","/tmp","/run","/media","/dev","/lost+found"} \
   / "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
@@ -115,7 +115,9 @@ log "📝 Updating extlinux.conf to boot from USB..."
 sudo sed -i "s|root=[^ ]*|root=PARTUUID=${PARTUUID}|" "$EXTLINUX_CONF"
 
 log "📦 Rebuilding initramfs for kernel $KERNEL_VERSION..."
-sudo update-initramfs -c -k "$KERNEL_VERSION"
+sudo update-initramfs -c -k "$KERNEL_VERSION" 2>&1 \
+  | grep -v -E "cryptsetup: WARNING|resume from /dev/zram|ldconfig.real: Warning" \
+  | tee -a "$LOGFILE"
 
 INITRD_PATH="/boot/initrd-${KERNEL_VERSION}"
 if [ -f "/boot/initrd.img-${KERNEL_VERSION}" ]; then
