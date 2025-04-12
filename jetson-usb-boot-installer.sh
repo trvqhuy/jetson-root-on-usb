@@ -35,7 +35,7 @@ error_exit() {
 
 log "📦 Ensuring required packages are installed (non-interactive)..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  parted rsync initramfs-tools \
+  parted rsync initramfs-tools pv \
   -o Dpkg::Options::="--force-confdef" \
   -o Dpkg::Options::="--force-confold" | tee -a "$LOGFILE"
 
@@ -47,33 +47,46 @@ if $AUTO_MODE; then
   USB_NAME="$DEFAULT_USB_NAME"
   CONFIRM="$DEFAULT_CONFIRM"
   UPDATE_FSTAB="$DEFAULT_UPDATE_FSTAB"
+  log "🛠️  Auto mode: using default USB device "/dev/$USB_NAME""
 else
   echo ""
-  read -t $TIMEOUT -rp "👉 Enter USB device name (default: ${DEFAULT_USB_NAME}): " USB_NAME || true
-  USB_NAME="${USB_NAME:-$DEFAULT_USB_NAME}"
+  read -t $TIMEOUT -rp "👉 Enter USB device name (e.g. sda) [default: ${DEFAULT_USB_NAME}]: " USB_NAME_INPUT || true
+  USB_NAME="${USB_NAME_INPUT:-$DEFAULT_USB_NAME}"
+  log "📌 Selected device: /dev/$USB_NAME"
 
-  read -t $TIMEOUT -rp "⚠️  This will wipe ALL data on /dev/${USB_NAME}. Type 'yes' to confirm (default: ${DEFAULT_CONFIRM}): " CONFIRM || true
-  CONFIRM="${CONFIRM:-$DEFAULT_CONFIRM}"
+  read -t $TIMEOUT -rp "⚠️  This will erase ALL data on /dev/$USB_NAME. Type 'yes' to continue [default: ${DEFAULT_CONFIRM}]: " CONFIRM_INPUT || true
+  CONFIRM="${CONFIRM_INPUT:-$DEFAULT_CONFIRM}"
 fi
 
 USB_DEV="/dev/$USB_NAME"
 USB_PART="${USB_DEV}1"
-log "📌 Selected USB device: $USB_DEV"
 
 if [[ "$CONFIRM" != "yes" ]]; then
-  error_exit "Aborted by user."
+  error_exit "User did not confirm disk wipe. Aborting."
 fi
 
-log "📦 Creating partition and formatting USB..."
+log "📦 Creating partition on $USB_DEV..."
 sudo parted "$USB_DEV" --script mklabel gpt mkpart primary ext4 0% 100% > /dev/null
-sudo mkfs.ext4 -F "$USB_PART" > /dev/null
+
+FS_TYPE=$(sudo blkid -o value -s TYPE "$USB_PART" || echo "")
+if [[ "$FS_TYPE" != "ext4" ]]; then
+  log "💥 Formatting $USB_PART as ext4..."
+  sudo mkfs.ext4 -F "$USB_PART"
+else
+  log "ℹ️  $USB_PART is already ext4. Skipping format."
+fi
 
 log "📂 Mounting $USB_PART to $MOUNT_POINT..."
 sudo mkdir -p "$MOUNT_POINT"
 sudo mount "$USB_PART" "$MOUNT_POINT"
 
-log "🔄 Copying root filesystem to USB..."
-sudo rsync -aAXh / "$MOUNT_POINT" $EXCLUDE | tee -a "$LOGFILE"
+log "🔄 Copying root filesystem to USB with progress bar..."
+TOTAL_FILES=$(sudo find / -xdev $EXCLUDE | wc -l)
+log "📊 Estimated total files: $TOTAL_FILES"
+
+sudo find / -xdev $EXCLUDE -print0 \
+  | pv -0 -l -s "$TOTAL_FILES" \
+  | sudo cpio -0 -pdm "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
 
 log "📄 Copying kernel modules to USB..."
 if [ -d "/lib/modules/$KERNEL_VERSION" ]; then
@@ -89,8 +102,12 @@ if [[ -z "$PARTUUID" ]]; then
 fi
 log "📌 PARTUUID: $PARTUUID"
 
-log "📄 Backing up extlinux.conf..."
-sudo cp "$EXTLINUX_CONF" "${EXTLINUX_CONF}.backup"
+if [ ! -f "${EXTLINUX_CONF}.backup" ]; then
+  log "📄 Backing up extlinux.conf..."
+  sudo cp "$EXTLINUX_CONF" "${EXTLINUX_CONF}.backup"
+else
+  log "ℹ️  extlinux.conf backup already exists. Skipping backup."
+fi
 
 log "📝 Updating extlinux.conf to boot from USB..."
 sudo sed -i "s|root=[^ ]*|root=PARTUUID=${PARTUUID}|" "$EXTLINUX_CONF"
