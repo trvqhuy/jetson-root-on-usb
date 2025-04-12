@@ -77,6 +77,32 @@ Ideal for automation, CI pipelines, or flashing farm use.
 
 ---
 
+## ✅ Verifying USB Boot
+
+After the first reboot, confirm the system is running from the USB:
+
+```bash
+mount | grep ' / '
+```
+
+You should see something like:
+
+```
+/dev/sda1 on / type ext4 ...
+```
+
+This confirms Jetson has successfully booted from USB.
+
+You can also use:
+
+```bash
+df -h /
+```
+
+If you see `/dev/sda1` or another USB device (not `/dev/mmcblk0p1`), the root filesystem is running from USB.
+
+---
+
 ## 🔄 Reverting Back to SD Card Boot
 
 To revert to booting from the microSD card:
