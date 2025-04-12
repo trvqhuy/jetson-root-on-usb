@@ -81,10 +81,13 @@ sudo mkdir -p "$MOUNT_POINT"
 sudo mount "$USB_PART" "$MOUNT_POINT"
 
 log "🔄 Copying root filesystem to USB with progress bar..."
-TOTAL_FILES=$(sudo find / -xdev $EXCLUDE | wc -l)
+TOTAL_FILES=$(sudo find / \
+  -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print \
+  | wc -l)
 log "📊 Estimated total files: $TOTAL_FILES"
 
-sudo find / -xdev $EXCLUDE -print0 \
+sudo find / \
+  -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print0 \
   | pv -0 -l -s "$TOTAL_FILES" \
   | sudo cpio -0 -pdm "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
 
