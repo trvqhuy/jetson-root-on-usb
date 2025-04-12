@@ -68,27 +68,27 @@ fi
 log "📦 Creating partition on $USB_DEV..."
 sudo parted "$USB_DEV" --script mklabel gpt mkpart primary ext4 0% 100% > /dev/null
 
-FS_TYPE=$(sudo blkid -o value -s TYPE "$USB_PART" || echo "")
-if [[ "$FS_TYPE" != "ext4" ]]; then
-  log "💥 Formatting $USB_PART as ext4..."
-  sudo mkfs.ext4 -F "$USB_PART"
-else
-  log "ℹ️  $USB_PART is already ext4. Skipping format."
-fi
+log "💥 Formatting $USB_PART as ext4..."
+sudo mkfs.ext4 -F "$USB_PART"
+
+# FS_TYPE=$(sudo blkid -o value -s TYPE "$USB_PART" || echo "")
+# if [[ "$FS_TYPE" != "ext4" ]]; then
+#   log "💥 Formatting $USB_PART as ext4..."
+#   sudo mkfs.ext4 -F "$USB_PART"
+# else
+#   log "ℹ️  $USB_PART is already ext4. Skipping format."
+# fi
 
 log "📂 Mounting $USB_PART to $MOUNT_POINT..."
 sudo mkdir -p "$MOUNT_POINT"
 sudo mount "$USB_PART" "$MOUNT_POINT"
 
 log "🔄 Copying root filesystem to USB with progress bar..."
-TOTAL_FILES=$(sudo find / \
-  -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print \
-  | wc -l)
+TOTAL_FILES=$(sudo find / -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print | wc -l)
 log "📊 Estimated total files: $TOTAL_FILES"
 
-sudo find / \
-  -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print0 \
-  | pv -0 -l -s "$TOTAL_FILES" \
+sudo find / -xdev \\( -path /mnt -o -path /proc -o -path /sys -o -path /dev/pts -o -path /tmp -o -path /run -o -path /media -o -path /dev -o -path /lost+found \\) -prune -o -print0 \\
+  | pv -0 -l -s "$TOTAL_FILES" \\
   | sudo cpio -0 -pdm "$MOUNT_POINT" 2>&1 | tee -a "$LOGFILE"
 
 log "📄 Copying kernel modules to USB..."
