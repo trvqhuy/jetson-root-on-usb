@@ -25,17 +25,19 @@ setup_usb_root() {
     # Fix TeamViewer GPG error
     if grep -q "teamviewer" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
         log "Fixing TeamViewer GPG key..."
-        sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys EF9DBDC73B7D1A07 2>&1 | tee -a "$LOGFILE" || {
-            warn "Failed to fetch TeamViewer GPG key. Continuing..."
+        wget -q -O /tmp/teamviewer.gpg https://download.teamviewer.com/download/linux/signature/TeamViewer2017.asc 2>&1 | tee -a "$LOGFILE" || {
+            warn "Failed to download TeamViewer GPG key. Continuing..."
             log "To remove TeamViewer repo, run: sudo rm /etc/apt/sources.list.d/teamviewer.list"
         }
+        if [ -f /tmp/teamviewer.gpg ]; then
+            sudo apt-key add /tmp/teamviewer.gpg 2>&1 | tee -a "$LOGFILE" || warn "Failed to add TeamViewer GPG key."
+            rm -f /tmp/teamviewer.gpg
+        fi
     fi
 
     # Repair dpkg if interrupted
     log "Checking dpkg status..."
-    if sudo dpkg --configure -a 2>&1 | tee -a "$LOGFILE" | grep -q "dpkg was interrupted"; then
-        error_exit "dpkg is interrupted. Run 'sudo dpkg --configure -a' manually and retry."
-    fi
+    sudo dpkg --configure -a 2>&1 | tee -a "$LOGFILE" || error_exit "Failed to configure dpkg. Run 'sudo dpkg --configure -a' manually and retry."
     sudo apt install -f -y 2>&1 | tee -a "$LOGFILE" || warn "Failed to fix broken packages, but continuing..."
 
     # Install required packages
@@ -45,22 +47,30 @@ setup_usb_root() {
 
     # Select USB device in interactive mode
     if ! $HEADLESS; then
-        # List USB block devices
-        USB_DEVICES=$(lsblk -d -o NAME,SIZE,MODEL | grep -E '^sd[a-z]' | awk '{print $1 " " $2 " " $3}')
-        if [ -z "$USB_DEVICES" ]; then
-            error_exit "No USB devices detected. Please connect a USB drive."
-        fi
+        while true; do
+            # List USB block devices
+            USB_DEVICES=$(lsblk -d -o NAME,SIZE,MODEL | grep -E '^sd[a-z]' | awk '{print $1 " " $2 " " $3}')
+            if [ -z "$USB_DEVICES" ]; then
+                dialog --msgbox "No USB devices detected. Please connect a USB drive and retry." 10 50 2>&1 >/dev/tty || true
+                clear
+                dialog --yesno "Retry USB device detection?" 8 50 2>&1 >/dev/tty || error_exit "Cancelled USB device selection."
+                clear
+                continue
+            fi
 
-        # Build dialog menu options
-        DIALOG_OPTIONS=""
-        while read -r name size model; do
-            DIALOG_OPTIONS="$DIALOG_OPTIONS $name \"$name - $size - $model\" off "
-        done <<< "$USB_DEVICES"
+            # Build dialog menu options
+            DIALOG_OPTIONS=""
+            while read -r name size model; do
+                DIALOG_OPTIONS="$DIALOG_OPTIONS $name \"$name - $size - $model\" off "
+            done <<< "$USB_DEVICES"
 
-        # Show dialog menu
-        USB_NAME=$(dialog --menu "Select USB device for root migration (ALL data will be erased):" 20 60 10 \
-            $DIALOG_OPTIONS 2>&1 >/dev/tty) || error_exit "Cancelled USB device selection."
-        clear
+            # Show dialog menu
+            USB_NAME=$(dialog --menu "Select USB device for root migration (ALL data will be erased):\nUse arrow keys to select, Enter to confirm, Esc to retry." 20 60 10 \
+                $DIALOG_OPTIONS 2>&1 >/dev/tty) && break
+            clear
+            dialog --yesno "Retry USB device detection?" 8 50 2>&1 >/dev/tty || error_exit "Cancelled USB device selection."
+            clear
+        done
         log "Selected USB device: $USB_NAME"
     fi
 
@@ -140,7 +150,7 @@ setup_usb_root() {
     # Backup extlinux.conf (SD card)
     if [ ! -f "${EXTLINUX_CONF}.backup" ]; then
         log "Backing up SD card extlinux.conf..."
-        sudo cp "$EXTLINUX_CONF" "${EXTLINUX_CONF}.backup" 2>&1 | tee -a "$LOGFILE" || warn "Failed to backup extlinux.conf."
+        sudo cp "$EXTLINX_CONF" "${EXTLINUX_CONF}.backup" 2>&1 | tee -a "$LOGFILE" || warn "Failed to backup extlinux.conf."
     fi
 
     # Create extlinux.conf on USB
