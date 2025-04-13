@@ -392,7 +392,9 @@ main_menu() {
                 ;;
             5)
                 log "Installing Jupyter..."
-                status=$(stdbuf -oL install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | tee -a "$LOGFILE")
+                set -x  # Enable debug tracing
+                status=$(stdbuf -oL install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | stdbuf -oL tee -a "$LOGFILE")
+                set +x  # Disable debug tracing
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: Jupyter installation completed."
                 else
