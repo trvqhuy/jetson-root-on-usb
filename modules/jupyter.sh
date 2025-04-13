@@ -1,5 +1,3 @@
-#!/bin/bash
-
 install_jupyter() {
     local JUPYTER_TYPE="$1"
     local JUPYTER_PORT="$2"
@@ -49,6 +47,7 @@ install_jupyter() {
         log "Failed to create virtual environment."
         return 1
     }
+    # Activate virtual environment for installation
     source /opt/jupyter_env/bin/activate
 
     # Install Jupyter
@@ -125,12 +124,11 @@ install_jupyter() {
     log "Creating Jupyter start script..."
     sudo bash -c "cat > /usr/local/bin/start-jupyter.sh" <<EOF
 #!/bin/bash
-USER_HOME=\$(eval echo ~\${SUDO_USER:-\$USER})
+USER_HOME=\$(eval echo ~${SUDO_USER:-$USER})
 CONFIG_DIR="\$USER_HOME/.jupyter"
 JUPYTER_TYPE="$JUPYTER_TYPE"
 JUPYTER_PORT="$JUPYTER_PORT"
-source /opt/jupyter_env/bin/activate
-/opt/jupyter_env/bin/jupyter \$JUPYTER_TYPE --config="\$CONFIG_DIR/jupyter_notebook_config.py" --ip=0.0.0.0 --port=\$JUPYTER_PORT
+/opt/jupyter_env/bin/python3 -m jupyter \$JUPYTER_TYPE --config="\$CONFIG_DIR/jupyter_notebook_config.py" --ip=0.0.0.0 --port=\$JUPYTER_PORT
 EOF
     sudo chmod +x /usr/local/bin/start-jupyter.sh 2>&1 | tee -a "$LOGFILE" || {
         log "Failed to set execute permissions on Jupyter start script."
@@ -148,7 +146,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/start-jupyter.sh
-User=$SUDO_USER
+User=${SUDO_USER:-$USER}
 WorkingDirectory=$USER_HOME
 Restart=always
 Environment=PATH=/opt/jupyter_env/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin
