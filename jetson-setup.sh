@@ -77,6 +77,7 @@ done
 ARCH=$(uname -m)
 if [ "$ARCH" != "aarch64" ] && ! $HEADLESS; then
     dialog --msgbox "Warning: This script is optimized for Jetson Nano (ARM64). Running on $ARCH. Some features (e.g., USB root migration, Jetson-specific libraries) may be skipped or simulated." 10 60 || log "Dialog warning failed to display."
+    clear
 fi
 
 # Create default config if headless and not exists
