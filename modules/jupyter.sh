@@ -67,7 +67,7 @@ install_jupyter() {
     else
         log "Invalid Jupyter type: $JUPYTER_TYPE."
         return 1
-    }
+    fi
     python3 -m pip install jupyter_server 2>&1 | tee -a "$LOGFILE" || warn "Failed to install jupyter_server."
 
     # Configure Jupyter
@@ -123,23 +123,15 @@ install_jupyter() {
 
     # Create start script
     log "Creating Jupyter start script..."
-    sudo bash -c "cat > /usr/local/bin/start-jupyter.sh" <<'EOF'
+    sudo bash -c "cat > /usr/local/bin/start-jupyter.sh" <<EOF
 #!/bin/bash
-USER_HOME=$(eval echo ~${SUDO_USER:-$USER})
-CONFIG_DIR="$USER_HOME/.jupyter"
-JUPYTER_TYPE="JUPYTER_TYPE_VALUE"
-JUPYTER_PORT="JUPYTER_PORT_VALUE"
+USER_HOME=\$(eval echo ~\${SUDO_USER:-\$USER})
+CONFIG_DIR="\$USER_HOME/.jupyter"
+JUPYTER_TYPE="$JUPYTER_TYPE"
+JUPYTER_PORT="$JUPYTER_PORT"
 source /opt/jupyter_env/bin/activate
-/opt/jupyter_env/bin/jupyter $JUPYTER_TYPE --config="$CONFIG_DIR/jupyter_notebook_config.py" --ip=0.0.0.0 --port=$JUPYTER_PORT
+/opt/jupyter_env/bin/jupyter \$JUPYTER_TYPE --config="\$CONFIG_DIR/jupyter_notebook_config.py" --ip=0.0.0.0 --port=\$JUPYTER_PORT
 EOF
-    sudo sed -i "s/JUPYTER_TYPE_VALUE/$JUPYTER_TYPE/" /usr/local/bin/start-jupyter.sh 2>&1 | tee -a "$LOGFILE" || {
-        log "Failed to configure Jupyter type in start script."
-        return 1
-    }
-    sudo sed -i "s/JUPYTER_PORT_VALUE/$JUPYTER_PORT/" /usr/local/bin/start-jupyter.sh 2>&1 | tee -a "$LOGFILE" || {
-        log "Failed to configure Jupyter port in start script."
-        return 1
-    }
     sudo chmod +x /usr/local/bin/start-jupyter.sh 2>&1 | tee -a "$LOGFILE" || {
         log "Failed to set execute permissions on Jupyter start script."
         return 1
