@@ -2,15 +2,37 @@
 
 # --- Auto-install gum if not present ---
 if ! command -v gum &> /dev/null; then
-  echo "🔍 gum not found. Installing gum..."
-  echo "deb [trusted=yes] https://apt.fury.io/charm/ /" | sudo tee /etc/apt/sources.list.d/charm.list > /dev/null
-  sudo apt update -y
-  sudo apt install -y gum
+  echo "🔍 gum not found. Installing gum from GitHub release..."
+
+  # Detect architecture (optional)
+  ARCH=$(uname -m)
+  if [[ "$ARCH" != "aarch64" ]]; then
+    echo "❌ Unsupported architecture: $ARCH"
+    exit 1
+  fi
+
+  TMP_DIR=$(mktemp -d)
+  cd $TMP_DIR
+
+  # Download gum .deb for aarch64 (v0.13.0 works well)
+  wget -q https://github.com/charmbracelet/gum/releases/download/v0.13.0/gum_0.13.0_linux_arm64.deb
+
+  if [ -f "gum_0.13.0_linux_arm64.deb" ]; then
+    sudo dpkg -i gum_0.13.0_linux_arm64.deb
+    cd -
+    rm -rf "$TMP_DIR"
+  else
+    echo "❌ Failed to download gum .deb file"
+    exit 1
+  fi
+
+  # Final check
   if ! command -v gum &> /dev/null; then
     echo "❌ gum installation failed. Please install manually."
     exit 1
   fi
 fi
+
 
 clear
 gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
