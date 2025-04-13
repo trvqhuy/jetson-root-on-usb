@@ -25,8 +25,9 @@ OPTIONS=(
 
 # Flag to track cancellation
 CANCELLED=0
+ERROR_DETECTED=0
 
-# Cleanup function for cancellation
+# Cleanup function for cancellation or error
 cleanup() {
   CANCELLED=1
   if [ -n "$CURRENT_PID" ]; then
@@ -41,7 +42,19 @@ cleanup() {
 # Trap Ctrl+C
 trap 'cleanup; echo "Installation cancelled by user via Ctrl+C."; whiptail --title "$TITLE" --msgbox "Installation cancelled by user via Ctrl+C." 8 50; exit 1' SIGINT
 
-# Function to run commands with progress and live log updates
+# Function to check logs for errors
+check_log_for_errors() {
+  local log_file=$1
+  if [ -s "$log_file" ]; then
+    # Look for common error patterns (case-insensitive)
+    if grep -iE "error|failed|no such file|unable to|cannot" "$log_file" >/dev/null; then
+      return 1 # Error found
+    fi
+  fi
+  return 0 # No error
+}
+
+# Function to run commands with progress, live logs, and error detection
 run_step() {
   local message=$1
   shift
@@ -49,6 +62,7 @@ run_step() {
   log_file="/tmp/install_log_$$.txt"
   debug_log="/tmp/install_debug_$$.log"
   CURRENT_PID=""
+  ERROR_DETECTED=0
 
   # Initialize log file
   > "$log_file"
@@ -62,11 +76,15 @@ run_step() {
   # Single gauge for all sub-commands
   (
     for cmd in "${commands[@]}"; do
-      # Check for cancellation
-      if [ $CANCELLED -eq 1 ]; then
+      # Check for cancellation or prior error
+      if [ $CANCELLED -eq 1 ] || [ $ERROR_DETECTED -eq 1 ]; then
         echo "XXX"
         echo "$current_progress"
-        echo "$message - Cancelled!"
+        if [ $CANCELLED -eq 1 ]; then
+          echo "$message - Cancelled!"
+        else
+          echo "$message - Error detected!"
+        fi
         echo "XXX"
         exit 1
       fi
@@ -80,12 +98,12 @@ run_step() {
 
       # Execute sub-command with real-time logging
       echo "Running: $cmd" >> "$log_file"
-      stdbuf -oL eval "$cmd" 2>&1 | tee -a "$log_file" &
+      eval "$cmd" 2>&1 | tee -a "$log_file" &
       CURRENT_PID=$!
       local pid=$CURRENT_PID
 
-      # Update logs while command runs
-      while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ]; do
+      # Update logs and check for errors while command runs
+      while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
         if [ -s "$log_file" ]; then
           local log_snippet=$(tail -n 1 "$log_file")
           # Sanitize: remove non-printable, limit to 40 chars
@@ -97,6 +115,16 @@ run_step() {
             echo "XXX"
             echo "Log update: $log_snippet" >> "$debug_log"
           fi
+          # Check logs for errors
+          if ! check_log_for_errors "$log_file"; then
+            ERROR_DETECTED=1
+            echo "XXX"
+            echo "$current_progress"
+            echo "$message - Error detected in logs!"
+            echo "XXX"
+            kill -9 $pid 2>/dev/null
+            exit 1
+          fi
         fi
         sleep 1
       done
@@ -107,7 +135,7 @@ run_step() {
 
       echo "Command '$cmd' exited with status $exit_status, progress: $current_progress" >> "$debug_log"
 
-      if [ $exit_status -ne 0 ]; then
+      if [ $exit_status -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
         echo "XXX"
         echo "$current_progress"
         echo "$message - Failed: $cmd"
@@ -146,10 +174,10 @@ run_step() {
     exit 1
   fi
 
-  # Handle command or gauge failure
-  if [ $cmd_exit -ne 0 ] || [ $gauge_exit -ne 0 ]; then
+  # Handle command, gauge, or log error
+  if [ $cmd_exit -ne 0 ] || [ $gauge_exit -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
     local error_msg="Error during: $message\nFailed command: ${cmd:-unknown}\nExit status: $cmd_exit"
-    if [ $cmd_exit -ne 0 ]; then
+    if [ $cmd_exit -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
       error_msg="$error_msg\nTry running 'apt-get update' or 'apt-get --fix-broken install' to resolve."
     fi
     if [ -s "$log_file" ]; then
