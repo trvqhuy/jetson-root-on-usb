@@ -3,14 +3,6 @@
 # Ensure script runs from its directory
 cd "$(dirname "$0")" || exit 1
 
-# Check and fix permissions for module files
-for module in modules/*.sh; do
-  if [ -f "$module" ] && [ ! -x "$module" ]; then
-    echo "🛠️ Fixing permissions for $module..." >&2
-    chmod +x "$module" || { echo "❌ Failed to fix permissions for $module" >&2; exit 1; }
-  fi
-done
-
 # Source modules
 source modules/utils.sh
 source modules/install_gum.sh
