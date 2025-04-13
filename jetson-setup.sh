@@ -217,7 +217,7 @@ fi
 
 # Update system
 log "Updating system packages..."
-sudo apt update && sudo apt upgrade -y >> "$LOGFILE" 2>&1 || error_exit "Failed to update system."
+sudo apt update >> "$LOGFILE" 2>&1 || error_exit "Failed to update system."
 
 # Launch TUI or headless execution
 main_menu
