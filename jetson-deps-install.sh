@@ -191,8 +191,8 @@ run_step() {
   > "$log_file"
   echo "Starting: $title" >> "$debug_log"
 
-  # Run command in background with logging
-  stdbuf -oL eval "$cmd" 2>&1 | tee -a "$log_file" &
+  # Run command in background with logging, suppressing terminal output
+  eval "$cmd" 2>&1 | tee -a "$log_file" &
   CURRENT_PID=$!
   echo "$CURRENT_PID" > "$pid_file"
 
@@ -297,7 +297,7 @@ for choice in $CHOICES; do
 done
 
 if [ $CANCELLED -eq 1 ]; then
-  gum style --foreground 1 "❌ Installation-cancelled."
+  gum style --foreground 1 "❌ Installation cancelled."
   exit 1
 fi
 
