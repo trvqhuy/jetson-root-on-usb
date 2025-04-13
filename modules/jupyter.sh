@@ -249,14 +249,14 @@ EOF
 # install_jupyter "lab" "8888" "yes" "none" ""
 
 # If called directly, print usage
-if [ "$#" -gt 0 ]; then
-    install_jupyter "$@"
-else
-    echo "Usage: $0 <type> <port> <boot> <secure> [password]"
-    echo "  type: notebook or lab"
-    echo "  port: e.g., 8888"
-    echo "  boot: yes or no"
-    echo "  secure: password, token, or none"
-    echo "  password: required if secure=password"
-    exit 1
-fi
+# if [ "$#" -gt 0 ]; then
+#     install_jupyter "$@"
+# else
+#     echo "Usage: $0 <type> <port> <boot> <secure> [password]"
+#     echo "  type: notebook or lab"
+#     echo "  port: e.g., 8888"
+#     echo "  boot: yes or no"
+#     echo "  secure: password, token, or none"
+#     echo "  password: required if secure=password"
+#     exit 1
+# fi
