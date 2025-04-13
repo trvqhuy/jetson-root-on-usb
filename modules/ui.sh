@@ -2,7 +2,7 @@
 
 show_welcome() {
   clear
-  gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
+  gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --border-foreground 212 --align center \
     "🚀 Jetson Nano AI/ML Installer" \
     "Use ↑ ↓ to navigate, Space to select, Enter to confirm"
 }

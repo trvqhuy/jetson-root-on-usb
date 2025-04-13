@@ -56,24 +56,26 @@ run_step() {
   > "$log_file"
   echo "Starting: $title" >> "$debug_log"
 
-  # Run command in background with logging
-  eval "$cmd" 2>&1 | tee -a "$log_file" &
+  # Run command with logging, suppressing terminal output
+  eval "$cmd" >"$log_file" 2>&1 &
   CURRENT_PID=$!
   echo "$CURRENT_PID" > "$pid_file"
 
-  # Update spinner title with latest log line
+  # Update spinner title with last 5 log lines
   while kill -0 "$CURRENT_PID" 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
     if [ -s "$log_file" ]; then
-      local log_snippet=$(tail -n 1 "$log_file" | sed 's/[^[:print:]]//g' | head -c 40)
+      local log_snippet=$(tail -n 5 "$log_file" | sed 's/[^[:print:]]//g' | head -c 40 | tr '\n' ';')
       if [ -n "$log_snippet" ]; then
-        gum spin --spinner dot --title "$title: $log_snippet" -- sleep 0.5
+        # Replace semicolons with newlines for display
+        log_snippet=$(echo "$log_snippet" | tr ';' '\n')
+        gum spin --spinner dot --title "$title:\n$log_snippet" -- sleep 0.3
         echo "Log update: $log_snippet" >> "$debug_log"
       else
-        gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+        gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.3
         echo "Log update: empty snippet" >> "$debug_log"
       fi
     else
-      gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+      gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.3
       echo "Log update: log file empty" >> "$debug_log"
     fi
     # Check for errors
