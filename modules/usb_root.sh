@@ -4,6 +4,7 @@ setup_usb_root() {
     local USB_NAME="$1"
     local CONFIRM="$2"
     local UPDATE_FSTAB="$3"
+    local ARCH="$4"
     local MOUNT_POINT="/mnt/usb"
     local EXTLINUX_CONF="/boot/extlinux/extlinux.conf"
     local KERNEL_VERSION="$(uname -r)"
@@ -16,7 +17,13 @@ setup_usb_root() {
     fi
 
     if [ "$CONFIRM" != "yes" ]; then
-        error_exit "USB root migration cancelled (confirmation not provided)."
+        log "USB root migration skipped (confirmation not provided)."
+        return
+    fi
+
+    if [ "$ARCH" != "aarch64" ]; then
+        log "Simulating USB root migration on $ARCH (no changes made)."
+        return
     fi
 
     # Install required packages

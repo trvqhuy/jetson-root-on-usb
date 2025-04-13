@@ -1,13 +1,17 @@
 #!/bin/bash
 
 backup_system() {
+    local BACKUP_DIR="$1"
+
     log "Starting system backup..."
 
-    # Prompt for backup location
-    BACKUP_DIR=$(dialog --inputbox "Enter backup directory:" 8 50 "$BACKUP_DIR" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
-    BACKUP_FILE="$BACKUP_DIR/jetson_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    # Validate input
+    if [ -z "$BACKUP_DIR" ]; then
+        error_exit "Backup directory not provided."
+    fi
 
-    # Ensure directory exists
+    # Create backup file
+    BACKUP_FILE="$BACKUP_DIR/jetson_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
     sudo mkdir -p "$BACKUP_DIR" || error_exit "Failed to create backup directory."
 
     # Create backup

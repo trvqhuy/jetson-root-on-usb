@@ -33,8 +33,8 @@ if ! $HEADLESS && ! command -v dialog &> /dev/null; then
     }
 fi
 
-# Create log directory
-sudo mkdir -p "$LOG_DIR"
+# Create log and config directories
+sudo mkdir -p "$LOG_DIR" "$(dirname "$CONFIG_FILE")"
 sudo touch "$LOGFILE"
 sudo chmod 644 "$LOGFILE"
 
@@ -56,6 +56,7 @@ error_exit() {
     echo -e "[ERROR] $1" | tee -a "$LOGFILE"
     if ! $HEADLESS; then
         dialog --msgbox "Error: $1\nCheck $LOGFILE for details." 10 50
+        clear
     fi
     exit 1
 }
@@ -64,6 +65,7 @@ error_exit() {
 ARCH=$(uname -m)
 if [ "$ARCH" != "aarch64" ] && ! $HEADLESS; then
     dialog --msgbox "Warning: This script is optimized for Jetson Nano (ARM64). Running on $ARCH. Some features (e.g., USB root migration, Jetson-specific libraries) may be skipped or simulated." 10 60
+    clear
 fi
 
 # Create default config if headless and not exists
@@ -105,11 +107,13 @@ main_menu() {
             6 "Optimize performance" on \
             2>&1 >/dev/tty) || {
             log "Cancelled feature selection."
+            clear
             exit 0
         }
         clear
         if [ -z "$FEATURES" ]; then
             log "No features selected. Exiting."
+            clear
             exit 0
         fi
     fi
@@ -128,19 +132,25 @@ main_menu() {
             case $feature in
                 1)
                     USB_NAME=$(dialog --inputbox "Enter USB device name (e.g., sda):" 8 40 "sda" 2>&1 >/dev/tty) || error_exit "Cancelled USB device input."
+                    clear
                     if [ "$ARCH" != "aarch64" ]; then
                         dialog --msgbox "Warning: USB root migration is Jetson-specific. On $ARCH, this will simulate the process (no actual changes)." 10 60
+                        clear
                         CONFIRM="no"
                     else
                         dialog --yesno "Erase ALL data on /dev/$USB_NAME? (Jetson only)" 8 50 && CONFIRM="yes" || CONFIRM="no"
+                        clear
                         dialog --yesno "Update /etc/fstab on USB? (Jetson only)" 8 50 && UPDATE_FSTAB="yes" || UPDATE_FSTAB="no"
+                        clear
                     fi
                     ;;
                 2)
                     BACKUP_DIR=$(dialog --inputbox "Enter backup directory:" 8 50 "/mnt/usb/backup" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
+                    clear
                     ;;
                 3)
                     BACKUP_DIR=$(dialog --inputbox "Enter backup directory to select file:" 8 50 "/mnt/usb/backup" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
+                    clear
                     ;;
                 4)
                     AI_ML_LIBS=$(dialog --checklist "Select AI/ML libraries:" 15 50 5 \
@@ -149,13 +159,16 @@ main_menu() {
                         pytorch "PyTorch" $([ "$ARCH" = "aarch64" ] && echo "on" || echo "off") \
                         opencv "OpenCV" on \
                         2>&1 >/dev/tty) || error_exit "Cancelled library selection."
+                    clear
                     ;;
                 5)
                     JUPYTER_TYPE=$(dialog --menu "Select Jupyter type:" 10 40 2 \
                         notebook "Jupyter Notebook" \
                         lab "JupyterLab" \
                         2>&1 >/dev/tty) || error_exit "Cancelled Jupyter type selection."
+                    clear
                     JUPYTER_PORT=$(dialog --inputbox "Enter Jupyter port:" 8 40 "8888" 2>&1 >/dev/tty) || error_exit "Cancelled port input."
+                    clear
                     ;;
             esac
         done
@@ -177,6 +190,7 @@ main_menu() {
         log "Headless setup completed."
     else
         dialog --msgbox "Setup completed successfully!\nLog: $LOGFILE" 10 50
+        clear
     fi
 }
 
@@ -196,4 +210,5 @@ sudo apt update && sudo apt upgrade -y >> "$LOGFILE" 2>&1 || error_exit "Failed 
 main_menu
 
 log "Setup finished."
+clear
 exit 0
