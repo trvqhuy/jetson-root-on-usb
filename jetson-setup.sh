@@ -392,13 +392,16 @@ main_menu() {
                 ;;
             5)
                 log "Installing Jupyter..."
-                set -x  # Enable debug tracing
-                status=$(stdbuf -oL install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | stdbuf -oL tee -a "$LOGFILE")
-                set +x  # Disable debug tracing
-                if [ $? -eq 0 ]; then
+                if ! type install_jupyter >/dev/null 2>&1; then
+                    error_exit "install_jupyter function not found. Check module sourcing."
+                fi
+                log "Calling install_jupyter with type=$JUPYTER_TYPE, port=$JUPYTER_PORT, boot=$JUPYTER_BOOT, secure=$JUPYTER_SECURE, password=$JUPYTER_PASSWORD"
+                install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | stdbuf -oL tee -a "$LOGFILE"
+                local exit_status=$?
+                if [ $exit_status -eq 0 ]; then
                     dialog_status="Success: Jupyter installation completed."
                 else
-                    dialog_status="Failed: Jupyter installation encountered errors.\nCheck $LOGFILE for details."
+                    dialog_status="Failed: Jupyter installation encountered errors (exit status $exit_status).\nCheck $LOGFILE for details."
                 fi
                 if ! $HEADLESS; then
                     dialog --backtitle "$DIALOG_BACKTITLE" --title "Jupyter Installation Status" \
