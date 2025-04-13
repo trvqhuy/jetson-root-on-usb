@@ -35,7 +35,7 @@ cleanup() {
   if [ -n "$log_file" ] && [ -f "$log_file" ]; then
     echo "Cleaning up log file: $log_file" >> /tmp/install_debug_$$.log
     # Keep for debugging; uncomment to clean up
-    # rm -f "$log_file"
+    rm -f "$log_file"
   fi
 }
 
@@ -75,31 +75,37 @@ run_step() {
       echo "$message"
       echo "XXX"
 
-      # Execute sub-command
-      echo "Running: $cmd" >> "$log_file"
-      eval "$cmd" >> "$log_file" 2>&1 &
+      # Start log monitoring in background
+      local log_pid
+      ( while [ -e /proc/$$ ]; do
+          if [ -s "$log_file" ]; then
+            local log_snippet=$(tail -n 1 "$log_file")
+            # Sanitize: keep printable chars, limit to 40
+            log_snippet=$(echo "$log_snippet" | tr -dc '[:print:]' | head -c 40)
+            if [ -n "$log_snippet" ]; then
+              echo "XXX"
+              echo "$current_progress"
+              echo "$message\nLog: $log_snippet"
+              echo "XXX"
+            fi
+          fi
+          sleep 1
+        done
+      ) &
+      log_pid=$!
+
+      # Execute sub-command with tee for real-time logging
+      echo "Running: $cmd" | tee -a "$log_file"
+      eval "$cmd" 2>&1 | tee -a "$log_file" &
       CURRENT_PID=$!
       local pid=$CURRENT_PID
-
-      # Update logs while command runs
-      while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ]; do
-        if [ -s "$log_file" ]; then
-          local log_snippet=$(tail -n 1 "$log_file")
-          # Sanitize and limit to 40 chars
-          log_snippet=$(echo "$log_snippet" | tr -dc 'a-zA-Z0-9 .:/-_' | head -c 40)
-          if [ -n "$log_snippet" ]; then
-            echo "XXX"
-            echo "$current_progress"
-            echo "$message\nLog: $log_snippet"
-            echo "XXX"
-          fi
-        fi
-        sleep 2
-      done
 
       # Wait for command to finish
       wait $pid
       local exit_status=$?
+
+      # Stop log monitoring
+      kill $log_pid 2>/dev/null
 
       echo "Command '$cmd' exited with status $exit_status" >> "$debug_log"
 
@@ -136,12 +142,17 @@ run_step() {
 
     # Handle command or gauge failure
     if [ $cmd_exit -ne 0 ] || [ $gauge_exit -ne 0 ]; then
+      local error_msg="Error during: $message\nFailed command: $cmd\nExit status: $cmd_exit"
+      if [ $cmd_exit -ne 0 ]; then
+        error_msg="$error_msg\nTry running 'apt-get update' or 'apt-get --fix-broken install' to resolve."
+      fi
       if [ -s "$log_file" ]; then
         local log_tail=$(tail -n 5 "$log_file" | sed 's/[^a-zA-Z0-9.\/_-]/\\&/g')
-        whiptail --title "$TITLE" --msgbox "Error during: $message\nFailed command: $cmd\nLog output (last 5 lines):\n\n$log_tail" 15 70
+        error_msg="$error_msg\nLog output (last 5 lines):\n\n$log_tail"
       else
-        whiptail --title "$TITLE" --msgbox "Error during: $message\nFailed command: $cmd\nNo output captured in logs." 15 70
+        error_msg="$error_msg\nNo output captured in logs."
       fi
+      whiptail --title "$TITLE" --msgbox "$error_msg" 18 70
       exit 1
     fi
   done
@@ -159,8 +170,7 @@ run_step() {
 
   # Clean up log file
   echo "Removing log file: $log_file" >> "$debug_log"
-  # Keep for debugging; uncomment to clean up
-  # rm -f "$log_file"
+  rm -f "$log_file"
 }
 
 # Show welcome message
@@ -196,7 +206,9 @@ for choice in $CHOICES; do
         "apt-get install -y python3-pip python3-virtualenv" \
         "apt-get install -y libjpeg-dev libopenblas-base libopenmpi-dev libomp-dev" \
         "apt-get install -y build-essential cmake gfortran libatlas-base-dev" \
-        "apt-get install -y chromium-chromedriver firefox geckodriver" \
+        "apt-get install -y chromium-chromedriver" \
+        "apt-get install -y firefox" \
+        "apt-get install -y geckodriver" \
         "apt-get install -y libtiff5-dev libavcodec-dev libavformat-dev libswscale-dev" \
         "apt-get install -y libgtk2.0-dev libcanberra-gtk* libxvidcore-dev libx264-dev" \
         "apt-get install -y libgtk-3-dev libhdf5-serial-dev libqtgui4 libqtwebkit4 libqt4-test" \
