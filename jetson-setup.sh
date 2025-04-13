@@ -165,7 +165,8 @@ main_menu() {
         CONFIRM=""
         UPDATE_FSTAB=""
         BACKUP_DIR=""
-        RESTORE_DIR=""
+        RESTORE_SOURCE=""
+        RESTORE_TARGET=""
         AI_ML_LIBS=""
         JUPYTER_PORT=""
         JUPYTER_TYPE=""
@@ -213,14 +214,66 @@ main_menu() {
                     fi
                     ;;
                 2)
-                    BACKUP_DIR=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Directory" \
-                        --inputbox "Enter the directory for system backup:" 10 50 "$DEFAULT_BACKUP_DIR" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
-                    clear
+                    while true; do
+                        MOUNTED_DEVICES=$(lsblk -o NAME,MOUNTPOINT | grep -E '/mnt|/media' | awk '$2!=""')
+                        CHOICES=()
+                        while read -r name mountpoint; do
+                            device="/dev/$name"
+                            CHOICES+=("$mountpoint" "$device")
+                        done <<< "$MOUNTED_DEVICES"
+                        if [ ${#CHOICES[@]} -eq 0 ]; then
+                            dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Destination Selection" \
+                                --msgbox "No mounted USB/SD devices found under /mnt or /media.\nPlease mount a backup destination and try again." 10 60 2>&1 >/dev/tty || true
+                            clear
+                            dialog --backtitle "$DIALOG_BACKTITLE" --title "Retry" \
+                                --yesno "Retry backup destination selection?" 8 50 2>&1 >/dev/tty || error_exit "Cancelled backup destination selection."
+                            clear
+                            continue
+                        fi
+                        BACKUP_DIR=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Destination Selection" \
+                            --menu "Select where to save the system backup:" 15 60 6 "${CHOICES[@]}" 2>&1 >/dev/tty) && break
+                        clear
+                        dialog --backtitle "$DIALOG_BACKTITLE" --title "Retry" \
+                            --yesno "Retry backup destination selection?" 8 50 2>&1 >/dev/tty || error_exit "Cancelled backup destination selection."
+                        clear
+                    done
+                    log "Selected backup directory: $BACKUP_DIR"
                     ;;
                 3)
-                    RESTORE_DIR=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Restore Directory" \
-                        --inputbox "Enter the directory containing backup files:" 10 50 "$DEFAULT_RESTORE_DIR" 2>&1 >/dev/tty) || error_exit "Cancelled restore directory input."
-                    clear
+                    while true; do
+                        BACKUP_DEV_LIST=$(lsblk -o NAME,MOUNTPOINT | grep -E '/mnt|/media' | awk '$2!=""')
+                        CHOICES=()
+                        while read -r name mountpoint; do
+                            CHOICES+=("$mountpoint" "/dev/$name")
+                        done <<< "$BACKUP_DEV_LIST"
+                        if [ ${#CHOICES[@]} -eq 0 ]; then
+                            dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Source Selection" \
+                                --msgbox "No mounted devices with backups found under /mnt or /media.\nPlease mount a device and try again." 10 60 2>&1 >/dev/tty || true
+                            clear
+                            dialog --backtitle "$DIALOG_BACKTITLE" --title "Retry" \
+                                --yesno "Retry backup source selection?" 8 50 2>&1 >/dev/tty || error_exit "Cancelled backup source selection."
+                            clear
+                            continue
+                        fi
+                        BACKUP_PARENT=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Source Selection" \
+                            --menu "Select the drive where the backup is stored:" 15 60 6 "${CHOICES[@]}" 2>&1 >/dev/tty) || {
+                            error_exit "Cancelled backup device selection."
+                        }
+                        clear
+                        RESTORE_SOURCE=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Backup Folder Selection" \
+                            --dselect "$BACKUP_PARENT/" 15 60 2>&1 >/dev/tty) || {
+                            error_exit "Cancelled backup folder selection."
+                        }
+                        clear
+                        RESTORE_TARGET=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "Restore Target" \
+                            --inputbox "Enter the path to restore the backup to (must be mounted, e.g., /mnt/usb):" 10 60 "/mnt/usb" 2>&1 >/dev/tty) || {
+                            error_exit "Cancelled restore target input."
+                        }
+                        clear
+                        break
+                    done
+                    log "Selected restore source: $RESTORE_SOURCE"
+                    log "Selected restore target: $RESTORE_TARGET"
                     ;;
                 4)
                     AI_ML_LIBS=$(dialog --backtitle "$DIALOG_BACKTITLE" --title "AI/ML Library Selection" \
@@ -311,7 +364,7 @@ main_menu() {
                 ;;
             3)
                 log "Starting system restore..."
-                status=$(restore_system "$RESTORE_DIR" 2>&1 | tee -a "$LOGFILE")
+                status=$(restore_system "$RESTORE_SOURCE" "$RESTORE_TARGET" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: System restore completed."
                 else

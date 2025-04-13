@@ -28,13 +28,13 @@ install_jupyter() {
     sudo apt install -f -y 2>&1 | tee -a "$LOGFILE" || warn "Failed to fix broken packages, but continuing..."
 
     # Install dependencies
-    log "Installing python3-pip and python3-venv..."
+    log "Installing python3-pip, python3-dev, and python3-venv..."
     sudo apt update 2>&1 | tee -a "$LOGFILE" || {
         log "Failed to update package lists."
         return 1
     }
-    sudo apt install -y python3-pip python3-venv python3-dev 2>&1 | tee -a "$LOGFILE" || {
-        log "Failed to install python3-pip, python3-venv, or python3-dev."
+    sudo apt install -y python3-pip python3-dev python3-venv 2>&1 | tee -a "$LOGFILE" || {
+        log "Failed to install python3-pip, python3-dev, or python3-venv."
         return 1
     }
     python3 -m pip install --upgrade pip 2>&1 | tee -a "$LOGFILE" || {
@@ -54,7 +54,7 @@ install_jupyter() {
     # Install Jupyter
     if [ "$JUPYTER_TYPE" = "notebook" ]; then
         log "Installing Jupyter Notebook..."
-        python3 -m pip install jupyter 2>&1 | tee -a "$LOGFILE" || {
+        python3 -m pip install jupyter notebook 2>&1 | tee -a "$LOGFILE" || {
             log "Failed to install Jupyter Notebook."
             return 1
         }
