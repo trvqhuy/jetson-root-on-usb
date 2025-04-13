@@ -34,12 +34,13 @@ cleanup() {
   fi
   if [ -n "$log_file" ] && [ -f "$log_file" ]; then
     echo "Cleaning up log file: $log_file" >> /tmp/install_debug_$$.log
-    rm -f "$log_file"
+    # Keep log file for debugging; comment out to preserve
+    # rm -f "$log_file"
   fi
 }
 
 # Trap Ctrl+C
-trap 'cleanup; echo "Installation cancelled by user via Ctrl+C."; exit 1' SIGINT
+trap 'cleanup; echo "Installation cancelled by user via Ctrl+C."; whiptail --title "$TITLE" --msgbox "Installation cancelled by user via Ctrl+C." 8 50; exit 1' SIGINT
 
 # Function to run commands with progress and live log updates
 run_step() {
@@ -86,14 +87,16 @@ run_step() {
       while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ]; do
         if [ -s "$log_file" ]; then
           local log_snippet=$(tail -n 1 "$log_file")
-          # Limit snippet length to avoid gauge overflow
-          log_snippet=${log_snippet:0:50}
-          echo "XXX"
-          echo "$current_progress"
-          echo "$message\n$log_snippet"
-          echo "XXX"
+          # Sanitize snippet: remove non-alphanumeric, limit to 40 chars
+          log_snippet=$(echo "$log_snippet" | tr -dc 'a-zA-Z0-9 .:/-_' | head -c 40)
+          if [ -n "$log_snippet" ]; then
+            echo "XXX"
+            echo "$current_progress"
+            echo "$message\nLog: $log_snippet"
+            echo "XXX"
+          fi
         fi
-        sleep 1 # Slower update to reduce whiptail issues
+        sleep 2 # Slower update to stabilize whiptail
       done
 
       # Wait for command to finish
@@ -126,7 +129,16 @@ run_step() {
     echo "100"
     echo "$message - Completed successfully!"
     echo "XXX"
-  ) | whiptail --title "$TITLE" --gauge "$message" 8 60 0
+  ) | whiptail --title "$TITLE" --gauge "$message" 8 60 0 || {
+    local gauge_exit=$?
+    echo "Gauge exited with status $gauge_exit" >> "$debug_log"
+    if [ $CANCELLED -eq 0 ]; then
+      # Only treat as cancellation if explicitly cancelled
+      echo "Unexpected gauge exit; treating as error, not cancellation" >> "$debug_log"
+      return $gauge_exit
+    fi
+    exit $gauge_exit
+  }
 
   # Check dialog and command exit status
   local gauge_exit=${PIPESTATUS[0]}
@@ -134,11 +146,33 @@ run_step() {
 
   echo "Gauge exit: $gauge_exit, Command exit: $cmd_exit" >> "$debug_log"
 
-  # Check if user cancelled the dialog
-  if [ $gauge_exit -ne 0 ]; then
-    cleanup
-    whiptail --title "$TITLE" --msgbox "Installation cancelled by user via dialog close." 8 50
+  # Handle cancellation
+  if [ $CANCELLED -eq 1 ]; then
+    whiptail --title "$TITLE" --msgbox "Installation cancelled by user." 8 50
     exit 1
+  fi
+
+  # Handle command failure
+  if [ $cmd_exit -ne 0 ]; then
+    if [ -s "$log_file" ]; then
+      local log_tail=$(tail -n 5 "$log_file" | sed 's/[^a-zA-Z0-9.\/_-]/\\&/g')
+      whiptail --title "$TITLE" --msgbox "Error during: $message\nLog output (last 5 lines):\n\n$log_tail" 15 70
+    else
+      whiptail --title "$TITLE" --msgbox "Error during: $message\nNo output captured in logs." 15 70
+    fi
+    exit $cmd_exit
+  fi
+
+  # Handle unexpected gauge exit
+  if [ $gauge_exit -ne 0 ]; then
+    echo "Gauge failed unexpectedly; checking logs" >> "$debug_log"
+    if [ -s "$log_file" ]; then
+      local log_tail=$(tail -n 5 "$log_file" | sed 's/[^a-zA-Z0-9.\/_-]/\\&/g')
+      whiptail --title "$TITLE" --msgbox "Gauge error during: $message\nLog output (last 5 lines):\n\n$log_tail" 15 70
+    else
+      whiptail --title "$TITLE" --msgbox "Gauge error during: $message\nNo output captured in logs." 15 70
+    fi
+    exit $gauge_exit
   fi
 
   # Display last 5 lines of log
@@ -151,21 +185,12 @@ run_step() {
 
   # Clean up log file
   echo "Removing log file: $log_file" >> "$debug_log"
-  rm -f "$log_file"
-
-  # Exit if command failed or cancelled
-  if [ $cmd_exit -ne 0 ]; then
-    whiptail --title "$TITLE" --msgbox "Error during: $message\nInstallation aborted." 8 50
-    exit $cmd_exit
-  fi
-  if [ $CANCELLED -eq 1 ]; then
-    whiptail --title "$TITLE" --msgbox "Installation cancelled by user." 8 50
-    exit 1
-  fi
+  # Keep log file for debugging; comment out to preserve
+  # rm -f "$log_file"
 }
 
 # Show welcome message
-whiptail --title "$TITLE" --msgbox "🚀 Welcome to the Jetson Nano AI/ML Installer!\n\nUse the arrow keys and spacebar to select what you want to install.\nThen press Enter to begin.\n\nPress Ctrl+C or close the progress dialog to cancel during installation." 15 60
+whiptail --title "$TITLE" --msgbox "🚀 Welcome to the Jetson Nano AI/ML Installer!\n\nUse the arrow keys and spacebar to select what you want to install.\nThen press Enter to begin.\n\nPress Ctrl+C to cancel during installation. Closing dialogs may cause issues." 15 60
 
 # Show checklist menu and capture selections
 CHOICES=$(whiptail --title "$TITLE" --checklist \
