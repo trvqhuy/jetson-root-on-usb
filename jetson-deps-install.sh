@@ -1,38 +1,110 @@
 #!/bin/bash
+# Function to clean up temporary directory
+cleanup_tmp() {
+  local tmp_dir=$1
+  if [ -d "$tmp_dir" ]; then
+    cd - >/dev/null
+    rm -rf "$tmp_dir"
+  fi
+}
 
-# --- Auto-install gum if not present ---
-if ! command -v gum &> /dev/null; then
-  echo "🔍 gum not found. Installing gum from GitHub release..."
+# Auto-install gum if not present
+if ! command -v gum &>/dev/null; then
+  echo "🔍 gum not found. Attempting to install gum automatically..."
 
-  # Detect architecture (optional)
+  # Detect architecture
   ARCH=$(uname -m)
   if [[ "$ARCH" != "aarch64" ]]; then
-    echo "❌ Unsupported architecture: $ARCH"
+    echo "❌ Unsupported architecture: $ARCH. Expected aarch64 for Jetson Nano."
     exit 1
   fi
 
+  # Create temporary directory
   TMP_DIR=$(mktemp -d)
-  cd $TMP_DIR
+  trap 'cleanup_tmp "$TMP_DIR"' EXIT # Ensure cleanup on exit
 
-  # Download gum .deb for aarch64 (v0.13.0 works well)
-  wget -q https://github.com/charmbracelet/gum/releases/download/v0.13.0/gum_0.13.0_linux_arm64.deb
+  cd "$TMP_DIR" || { echo "❌ Failed to change to temporary directory"; exit 1; }
 
-  if [ -f "gum_0.13.0_linux_arm64.deb" ]; then
-    sudo dpkg -i gum_0.13.0_linux_arm64.deb
-    cd -
-    rm -rf "$TMP_DIR"
+  # Try to get the latest release version from GitHub API
+  LATEST_VERSION=$(curl -s https://api.github.com/repos/charmbracelet/gum/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
+  if [ -z "$LATEST_VERSION" ]; then
+    echo "⚠️ Could not fetch latest version, falling back to v0.13.0"
+    LATEST_VERSION="v0.13.0"
   else
-    echo "❌ Failed to download gum .deb file"
-    exit 1
+    echo "📦 Found latest gum version: $LATEST_VERSION"
+  fi
+
+  # Download gum .deb for aarch64
+  DEB_FILE="gum_${LATEST_VERSION}_linux_arm64.deb"
+  DEB_URL="https://github.com/charmbracelet/gum/releases/download/${LATEST_VERSION}/${DEB_FILE}"
+  echo "⬇️ Downloading $DEB_FILE..."
+  wget -q --tries=3 --timeout=10 "$DEB_URL" -O "$DEB_FILE"
+
+  if [ -f "$DEB_FILE" ]; then
+    # Install dependencies and fix potential issues
+    echo "🔧 Installing dependencies..."
+    sudo apt-get update
+    sudo apt-get install -y -f # Fix broken dependencies
+
+    # Install gum .deb
+    echo "📦 Installing gum..."
+    if sudo dpkg -i "$DEB_FILE"; then
+      echo "✅ gum installed successfully."
+    else
+      echo "⚠️ dpkg failed, attempting to fix dependencies..."
+      sudo apt-get install -y -f
+      if sudo dpkg -i "$DEB_FILE"; then
+        echo "✅ gum installed after fixing dependencies."
+      else
+        echo "❌ Failed to install gum .deb."
+        cleanup_tmp "$TMP_DIR"
+        exit 1
+      fi
+    fi
+  else
+    echo "❌ Failed to download $DEB_FILE. Trying binary installation..."
+
+    # Fallback to binary installation
+    BINARY_FILE="gum_${LATEST_VERSION}_Linux_arm64.tar.gz"
+    BINARY_URL="https://github.com/charmbracelet/gum/releases/download/${LATEST_VERSION}/${BINARY_FILE}"
+    echo "⬇️ Downloading $BINARY_FILE..."
+    wget -q --tries=3 --timeout=10 "$BINARY_URL" -O "$BINARY_FILE"
+
+    if [ -f "$BINARY_FILE" ]; then
+      tar -xzf "$BINARY_FILE"
+      if [ -f "gum" ]; then
+        sudo mv gum /usr/local/bin/
+        sudo chmod +x /usr/local/bin/gum
+        echo "✅ gum binary installed successfully."
+      else
+        echo "❌ Failed to extract gum binary."
+        cleanup_tmp "$TMP_DIR"
+        exit 1
+      fi
+    else
+      echo "❌ Failed to download gum binary. Please install gum manually."
+      cleanup_tmp "$TMP_DIR"
+      exit 1
+    fi
   fi
 
   # Final check
-  if ! command -v gum &> /dev/null; then
-    echo "❌ gum installation failed. Please install manually."
+  if ! command -v gum &>/dev/null; then
+    echo "❌ gum installation failed. Please install manually from https://github.com/charmbracelet/gum."
+    cleanup_tmp "$TMP_DIR"
     exit 1
   fi
+
+  # Cleanup
+  cleanup_tmp "$TMP_DIR"
+  echo "✅ gum is now installed and ready to use."
+else
+  echo "✅ gum is already installed."
 fi
 
+# Verify gum version
+gum_version=$(gum --version 2>/dev/null || echo "unknown")
+echo "ℹ️ gum version: $gum_version"
 
 clear
 gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
