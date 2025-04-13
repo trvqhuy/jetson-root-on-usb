@@ -24,25 +24,6 @@ if [ "$1" = "--headless" ]; then
     HEADLESS=true
 fi
 
-# Ensure dialog is installed (only needed for interactive mode)
-if ! $HEADLESS && ! command -v dialog &> /dev/null; then
-    sudo apt update
-    sudo apt install -y dialog >> /dev/null 2>&1 || {
-        echo "Failed to install dialog."
-        exit 1
-    }
-fi
-
-# Create log and config directories
-sudo mkdir -p "$LOG_DIR" "$(dirname "$CONFIG_FILE")"
-sudo touch "$LOGFILE"
-sudo chmod 644 "$LOGFILE"
-
-# Source module scripts
-for module in "$MODULE_DIR"/*.sh; do
-    source "$module"
-done
-
 # Logging functions
 log() {
     echo -e "[INFO] $1" | tee -a "$LOGFILE"
@@ -55,16 +36,47 @@ warn() {
 error_exit() {
     echo -e "[ERROR] $1" | tee -a "$LOGFILE"
     if ! $HEADLESS; then
-        dialog --msgbox "Error: $1\nCheck $LOGFILE for details." 10 50
+        dialog --msgbox "Error: $1\nCheck $LOGFILE for details." 10 50 || echo "Dialog failed to display error."
         clear
     fi
     exit 1
 }
 
+# Create log and config directories
+sudo mkdir -p "$LOG_DIR" "$(dirname "$CONFIG_FILE")"
+sudo touch "$LOGFILE"
+sudo chmod 644 "$LOGFILE"
+
+# Ensure dialog is installed (only needed for interactive mode)
+if ! $HEADLESS; then
+    if ! command -v dialog &> /dev/null; then
+        log "Installing dialog..."
+        sudo apt update >> "$LOGFILE" 2>&1 || error_exit "Failed to update package lists."
+        sudo apt install -y dialog >> "$LOGFILE" 2>&1 || error_exit "Failed to install dialog."
+    fi
+    # Verify terminal environment
+    if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
+        export TERM=xterm
+        log "Set TERM=xterm due to invalid or missing TERM."
+    fi
+    tty > /dev/null 2>&1 || error_exit "No TTY available. Run in an interactive terminal or use --headless."
+    # Check terminal size
+    read rows cols < <(stty size)
+    if [ "$rows" -lt 20 ] || [ "$cols" -lt 60 ]; then
+        warn "Terminal size ($rows x $cols) too small for dialog. Resizing recommended."
+    fi
+fi
+
+# Source module scripts
+for module in "$MODULE_DIR"/*.sh; do
+    [ -f "$module" ] || error_exit "Module not found: $module"
+    source "$module"
+done
+
 # Check architecture
 ARCH=$(uname -m)
 if [ "$ARCH" != "aarch64" ] && ! $HEADLESS; then
-    dialog --msgbox "Warning: This script is optimized for Jetson Nano (ARM64). Running on $ARCH. Some features (e.g., USB root migration, Jetson-specific libraries) may be skipped or simulated." 10 60
+    dialog --msgbox "Warning: This script is optimized for Jetson Nano (ARM64). Running on $ARCH. Some features (e.g., USB root migration, Jetson-specific libraries) may be skipped or simulated." 10 60 || log "Dialog warning failed to display."
     clear
 fi
 
@@ -135,7 +147,7 @@ main_menu() {
                     USB_NAME=$(dialog --inputbox "Enter USB device name (e.g., sda):" 8 40 "sda" 2>&1 >/dev/tty) || error_exit "Cancelled USB device input."
                     clear
                     if [ "$ARCH" != "aarch64" ]; then
-                        dialog --msgbox "Warning: USB root migration is Jetson-specific. On $ARCH, this will simulate the process (no actual changes)." 10 60
+                        dialog --msgbox "Warning: USB root migration is Jetson-specific. On $ARCH, this will simulate the process (no actual changes)." 10 60 || log "Dialog warning failed to display."
                         clear
                         CONFIRM="no"
                     else
@@ -190,7 +202,7 @@ main_menu() {
     if $HEADLESS; then
         log "Headless setup completed."
     else
-        dialog --msgbox "Setup completed successfully!\nLog: $LOGFILE" 10 50
+        dialog --msgbox "Setup completed successfully!\nLog: $LOGFILE" 10 50 || log "Dialog completion message failed to display."
         clear
     fi
 }
