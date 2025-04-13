@@ -3,8 +3,8 @@
 set -e
 
 # -------------------- CONFIG --------------------
-CONFIG_FILE="/etc/jetson-setup.conf"
-LOG_DIR="/var/log/jetson-setup"
+CONFIG_FILE="config/jetson-setup.conf"
+LOG_DIR="logs/jetson-setup"
 LOGFILE="$LOG_DIR/setup.log"
 MODULE_DIR="$(dirname "$0")/modules"
 TIMEOUT=30
