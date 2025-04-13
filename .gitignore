@@ -1,0 +1,69 @@
+# System files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+*.bak
+*.tmp
+
+# Build and compilation
+*.o
+*.ko
+*.so
+*.a
+*.out
+*.exe
+*.dll
+*.class
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment and IDE
+.env
+.venv
+env/
+venv/
+ENV/
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Temporary files
+/tmp/
+/temp/
+
+# Jetpack and NVIDIA specific
+*.nvram
+*.nvram.bak
+*.nvram.old
+
+# USB and disk images
+*.img
+*.iso
+*.raw
+
+# Documentation
+docs/_build/
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+
+# Backup files
+*.bak
+*.backup
+*.old 
