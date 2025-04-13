@@ -144,38 +144,28 @@ main_menu() {
         for feature in $FEATURES; do
             case $feature in
                 1)
-                    # Dynamically detect USB devices (excluding internal mmcblk and loop)
+                    # USB selection handled here ONLY
                     DEVICE_LIST=$(lsblk -dpno NAME,MODEL,SIZE,TYPE | grep -E 'disk' | grep -v 'mmcblk\|loop')
-
-                    # Format for dialog: device_name "description"
                     CHOICES=()
                     while IFS= read -r line; do
-                    DEVICE=$(echo "$line" | awk '{print $1}')
-                    DESC=$(echo "$line" | sed "s|$DEVICE||")
-                    CHOICES+=("$DEVICE" "$DESC")
+                        DEV=$(echo "$line" | awk '{print $1}')
+                        DESC=$(echo "$line" | sed "s|$DEV||")
+                        CHOICES+=("$DEV" "$DESC")
                     done <<< "$DEVICE_LIST"
 
-                    USB_NAME=$(dialog --clear --title "Select USB device" \
-                    --menu "Choose the USB device to migrate root to:" 15 60 6 \
-                    "${CHOICES[@]}" \
-                    2>&1 >/dev/tty) || error_exit "Cancelled USB device selection."
+                    USB_PATH=$(dialog --title "Select USB device" --menu "Choose USB for root migration:" 15 60 6 "${CHOICES[@]}" 2>&1 >/dev/tty) || error_exit "USB selection cancelled."
+                    USB_NAME=$(basename "$USB_PATH")
                     clear
 
-                    # Strip leading /dev/ from device name for consistency with rest of script
-                    USB_NAME=$(basename "$USB_NAME")
-
-                    clear
                     if [ "$ARCH" != "aarch64" ]; then
-                        dialog --msgbox "Warning: USB root migration is Jetson-specific. On $ARCH, this will simulate the process (no actual changes)." 10 60 || log "Dialog warning failed to display."
-                        clear
+                        dialog --msgbox "Non-Jetson detected. Simulating only." 8 50
                         CONFIRM="no"
                     else
-                        dialog --yesno "Erase ALL data on /dev/$USB_NAME? (Jetson only)" 8 50 && CONFIRM="yes" || CONFIRM="no"
-                        clear
-                        dialog --yesno "Update /etc/fstab on USB? (Jetson only)" 8 50 && UPDATE_FSTAB="yes" || UPDATE_FSTAB="no"
-                        clear
+                        dialog --yesno "Erase ALL data on /dev/$USB_NAME?" 8 50 && CONFIRM="yes" || CONFIRM="no"
+                        dialog --yesno "Update /etc/fstab on USB?" 8 50 && UPDATE_FSTAB="yes" || UPDATE_FSTAB="no"
                     fi
                     ;;
+
                 2)
                     BACKUP_DIR=$(dialog --inputbox "Enter backup directory:" 8 50 "/mnt/usb/backup" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
                     clear
