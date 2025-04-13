@@ -1,5 +1,3 @@
-#!/bin/bash
-
 install_jupyter() {
     local JUPYTER_TYPE="$1"
     local JUPYTER_PORT="$2"
