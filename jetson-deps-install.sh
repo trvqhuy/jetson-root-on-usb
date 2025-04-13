@@ -1,10 +1,12 @@
 #!/bin/bash
+
 # Function to clean up temporary directory
 cleanup_tmp() {
   local tmp_dir=$1
   if [ -d "$tmp_dir" ]; then
-    cd - >/dev/null
+    cd - >/dev/null 2>&1
     rm -rf "$tmp_dir"
+    echo "🧹 Cleaned up temporary directory: $tmp_dir" >&2
   fi
 }
 
@@ -15,74 +17,76 @@ if ! command -v gum &>/dev/null; then
   # Detect architecture
   ARCH=$(uname -m)
   if [[ "$ARCH" != "aarch64" ]]; then
-    echo "❌ Unsupported architecture: $ARCH. Expected aarch64 for Jetson Nano."
+    echo "❌ Unsupported architecture: $ARCH. Expected aarch64 for Jetson Nano." >&2
     exit 1
   fi
 
   # Create temporary directory
-  TMP_DIR=$(mktemp -d)
-  trap 'cleanup_tmp "$TMP_DIR"' EXIT # Ensure cleanup on exit
+  TMP_DIR=$(mktemp -d) || { echo "❌ Failed to create temporary directory" >&2; exit 1; }
+  trap 'cleanup_tmp "$TMP_DIR"' EXIT
 
-  cd "$TMP_DIR" || { echo "❌ Failed to change to temporary directory"; exit 1; }
+  cd "$TMP_DIR" || { echo "❌ Failed to change to temporary directory" >&2; exit 1; }
 
-  # Try to get the latest release version from GitHub API
-  LATEST_VERSION=$(curl -s https://api.github.com/repos/charmbracelet/gum/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
-  if [ -z "$LATEST_VERSION" ]; then
-    echo "⚠️ Could not fetch latest version, falling back to v0.13.0"
-    LATEST_VERSION="v0.13.0"
+  # Get latest gum version from GitHub API
+  echo "🌐 Fetching latest gum version..." >&2
+  LATEST_VERSION=$(curl -s --connect-timeout 10 https://api.github.com/repos/charmbracelet/gum/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/' || echo "v0.13.0")
+  if [[ "$LATEST_VERSION" == "v"* ]]; then
+    echo "📦 Found gum version: $LATEST_VERSION" >&2
   else
-    echo "📦 Found latest gum version: $LATEST_VERSION"
+    echo "⚠️ Could not fetch latest version, falling back to v0.13.0" >&2
+    LATEST_VERSION="v0.13.0"
   fi
 
-  # Download gum .deb for aarch64
-  DEB_FILE="gum_${LATEST_VERSION}_linux_arm64.deb"
+  # Try downloading .deb file first
+  DEB_FILE="gum_${LATEST_VERSION#v}_linux_arm64.deb"
   DEB_URL="https://github.com/charmbracelet/gum/releases/download/${LATEST_VERSION}/${DEB_FILE}"
-  echo "⬇️ Downloading $DEB_FILE..."
+  echo "⬇️ Attempting to download $DEB_FILE..." >&2
   wget -q --tries=3 --timeout=10 "$DEB_URL" -O "$DEB_FILE"
 
-  if [ -f "$DEB_FILE" ]; then
-    # Install dependencies and fix potential issues
-    echo "🔧 Installing dependencies..."
-    sudo apt-get update
-    sudo apt-get install -y -f # Fix broken dependencies
+  if [ -f "$DEB_FILE" ] && file "$DEB_FILE" | grep -q "Debian binary package"; then
+    echo "🔧 Installing dependencies..." >&2
+    sudo apt-get update || { echo "⚠️ apt-get update had issues, continuing..." >&2; }
+    sudo apt-get install -y -f || { echo "⚠️ Failed to fix dependencies, attempting install anyway..." >&2; }
 
-    # Install gum .deb
-    echo "📦 Installing gum..."
+    echo "📦 Installing gum via .deb..." >&2
     if sudo dpkg -i "$DEB_FILE"; then
-      echo "✅ gum installed successfully."
+      echo "✅ gum installed successfully via .deb." >&2
     else
-      echo "⚠️ dpkg failed, attempting to fix dependencies..."
+      echo "⚠️ dpkg failed, attempting to fix dependencies..." >&2
       sudo apt-get install -y -f
       if sudo dpkg -i "$DEB_FILE"; then
-        echo "✅ gum installed after fixing dependencies."
+        echo "✅ gum installed after fixing dependencies." >&2
       else
-        echo "❌ Failed to install gum .deb."
-        cleanup_tmp "$TMP_DIR"
-        exit 1
+        echo "❌ Failed to install gum .deb." >&2
+        BINARY_INSTALL=1
       fi
     fi
   else
-    echo "❌ Failed to download $DEB_FILE. Trying binary installation..."
+    echo "⚠️ .deb file not found or invalid, switching to binary installation..." >&2
+    BINARY_INSTALL=1
+  fi
 
-    # Fallback to binary installation
-    BINARY_FILE="gum_${LATEST_VERSION}_Linux_arm64.tar.gz"
+  # Fallback to binary installation if .deb fails or is unavailable
+  if [ "$BINARY_INSTALL" == "1" ]; then
+    BINARY_FILE="gum_${LATEST_VERSION#v}_Linux_arm64.tar.gz"
     BINARY_URL="https://github.com/charmbracelet/gum/releases/download/${LATEST_VERSION}/${BINARY_FILE}"
-    echo "⬇️ Downloading $BINARY_FILE..."
+    echo "⬇️ Downloading $BINARY_FILE..." >&2
     wget -q --tries=3 --timeout=10 "$BINARY_URL" -O "$BINARY_FILE"
 
-    if [ -f "$BINARY_FILE" ]; then
+    if [ -f "$BINARY_FILE" ] && file "$BINARY_FILE" | grep -q "gzip compressed data"; then
+      echo "📦 Extracting gum binary..." >&2
       tar -xzf "$BINARY_FILE"
       if [ -f "gum" ]; then
         sudo mv gum /usr/local/bin/
         sudo chmod +x /usr/local/bin/gum
-        echo "✅ gum binary installed successfully."
+        echo "✅ gum binary installed successfully." >&2
       else
-        echo "❌ Failed to extract gum binary."
+        echo "❌ Failed to extract gum binary." >&2
         cleanup_tmp "$TMP_DIR"
         exit 1
       fi
     else
-      echo "❌ Failed to download gum binary. Please install gum manually."
+      echo "❌ Failed to download or verify gum binary. Please install gum manually from https://github.com/charmbracelet/gum." >&2
       cleanup_tmp "$TMP_DIR"
       exit 1
     fi
@@ -90,21 +94,19 @@ if ! command -v gum &>/dev/null; then
 
   # Final check
   if ! command -v gum &>/dev/null; then
-    echo "❌ gum installation failed. Please install manually from https://github.com/charmbracelet/gum."
+    echo "❌ gum installation failed. Please install manually from https://github.com/charmbracelet/gum." >&2
     cleanup_tmp "$TMP_DIR"
     exit 1
   fi
 
-  # Cleanup
-  cleanup_tmp "$TMP_DIR"
-  echo "✅ gum is now installed and ready to use."
+  echo "✅ gum is now installed and ready to use." >&2
 else
-  echo "✅ gum is already installed."
+  echo "✅ gum is already installed." >&2
 fi
 
 # Verify gum version
 gum_version=$(gum --version 2>/dev/null || echo "unknown")
-echo "ℹ️ gum version: $gum_version"
+echo "ℹ️ gum version: $gum_version" >&2
 
 clear
 gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
