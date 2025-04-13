@@ -167,6 +167,16 @@ check_log_for_errors() {
   return 0 # No error
 }
 
+# Function to fix apt sources
+fix_apt_sources() {
+  # Remove invalid apt.fury.io/charm source if present
+  if grep -q "apt.fury.io/charm" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
+    echo "🛠️ Removing invalid apt.fury.io/charm source..." >&2
+    sudo find /etc/apt/sources.list.d/ -type f -name "*.list" -exec grep -l "apt.fury.io/charm" {} \; -delete
+    sudo sed -i '/apt.fury.io\/charm/d' /etc/apt/sources.list 2>/dev/null
+  fi
+}
+
 # Function to run commands with progress and log display
 run_step() {
   local title=$1
@@ -181,8 +191,8 @@ run_step() {
   > "$log_file"
   echo "Starting: $title" >> "$debug_log"
 
-  # Run command in background with logging
-  eval "$cmd" 2>&1 | tee -a "$log_file" &
+  # Run command in background with logging, suppressing terminal output
+  eval "$cmd" >"$log_file" 2>&1 &
   CURRENT_PID=$!
   echo "$CURRENT_PID" > "$pid_file"
 
@@ -217,19 +227,22 @@ run_step() {
   echo "Command '$cmd' exited with status $exit_status" >> "$debug_log"
 
   if [ $exit_status -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
-    local error_msg="❌ Error during: $title\nExit status: $exit_status"
+    error_msg=$(printf "❌ Error during: %s\nExit status: %d\nLog output (last 5 lines):\n" "$title" "$exit_status")
     if [ -s "$log_file" ]; then
       local log_tail=$(tail -n 5 "$log_file" | sed 's/[^[:print:]]//g')
-      error_msg="$error_msg\nLog output (last 5 lines):\n$log_tail"
+      error_msg=$(printf "%s%s" "$error_msg" "$log_tail")
     else
-      error_msg="$error_msg\nNo output captured in logs."
+      error_msg=$(printf "%sNo output captured in logs." "$error_msg")
     fi
-    gum style --foreground 1 --border normal --padding "1 2" "$error_msg"
+    gum write --header "Error" -- "$error_msg"
     exit 1
   fi
 
   gum style --foreground 10 "✅ $title completed."
 }
+
+# Fix apt sources before tasks
+fix_apt_sources
 
 # Execute selected tasks
 IFS=$'\n' # Split choices on newlines
