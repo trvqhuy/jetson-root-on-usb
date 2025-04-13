@@ -82,7 +82,6 @@ if ! command -v gum &>/dev/null; then
     : # Success, continue
   else
     echo "⚠️ Failed to install $LATEST_VERSION, falling back to v0.13.0..." >&2
-    # Try fallback version
     if ! install_gum_binary "v0.13.0"; then
       echo "❌ Failed to install gum v0.13.0. Please install manually from https://github.com/charmbracelet/gum." >&2
       cleanup_tmp "$TMP_DIR"
@@ -105,44 +104,138 @@ fi
 # Verify gum version
 gum_version=$(gum --version 2>/dev/null || echo "unknown")
 echo "ℹ️ gum version: $gum_version" >&2
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+  gum style --foreground 1 "❌ This script must be run as root. Please use sudo."
+  exit 1
+fi
+
+# Clear screen and show welcome message
 clear
 gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
-"🚀 Jetson Nano AI/ML Installer" \
-"Use ↑ ↓ to navigate and Enter to select"
-
-#!/bin/bash
-
-clear
-gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --align center \
-"🚀 Jetson Nano AI/ML Installer" \
-"Use ↑ ↓ to navigate and Enter to select"
+  "🚀 Jetson Nano AI/ML Installer" \
+  "Use ↑ ↓ to navigate, Space to select, Enter to confirm"
 
 # Define choices
-CHOICES=$(gum choose --no-limit \
+CHOICES=($(gum choose --no-limit --selected "Install system dependencies" \
   "Install system dependencies" \
   "Install Python build tools" \
   "Install scientific libraries" \
   "Install ML & CV libraries" \
   "Install EasyOCR" \
   "Install web stack" \
-  "Check OpenCV CUDA support"
-)
+  "Check OpenCV CUDA support"))
 
-# Check if user cancelled
-if [ -z "$CHOICES" ]; then
+# Check if user cancelled or selected nothing
+if [ ${#CHOICES[@]} -eq 0 ]; then
   gum style --foreground 1 "❌ No options selected. Exiting."
   exit 1
 fi
 
-# Function runner
+# Log selected choices for debugging
+debug_log="/tmp/install_debug_$$.log"
+echo "Selected choices: ${CHOICES[*]}" >> "$debug_log"
+
+# Flag to track cancellation
+CANCELLED=0
+ERROR_DETECTED=0
+
+# Cleanup function for cancellation or error
+cleanup() {
+  CANCELLED=1
+  if [ -n "$CURRENT_PID" ]; then
+    kill -9 "$CURRENT_PID" 2>/dev/null
+  fi
+  if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+    echo "Cleaning up log file: $log_file" >> "$debug_log"
+    rm -f "$log_file"
+  fi
+}
+
+# Trap Ctrl+C
+trap 'cleanup; gum style --foreground 1 "Installation cancelled by user via Ctrl+C."; exit 1' SIGINT
+
+# Function to check logs for errors
+check_log_for_errors() {
+  local log_file=$1
+  if [ -s "$log_file" ]; then
+    if grep -iE "E: Unable to locate package|failed|error:|no such file|cannot" "$log_file" >/dev/null; then
+      return 1 # Error found
+    fi
+  fi
+  return 0 # No error
+}
+
+# Function to run commands with progress and log display
 run_step() {
-  gum style --foreground 99 "🔧 $1"
-  eval "$2" | gum spin --spinner dot --title "$1" --show-output
+  local title=$1
+  local cmd=$2
+  local log_file="/tmp/install_log_$$.txt"
+  local pid_file="/tmp/install_pid_$$.txt"
+  ERROR_DETECTED=0
+
+  gum style --foreground 99 "🔧 $title"
+
+  # Initialize log file
+  > "$log_file"
+  echo "Starting: $title" >> "$debug_log"
+
+  # Run command in background with logging
+  eval "$cmd" 2>&1 | tee -a "$log_file" &
+  CURRENT_PID=$!
+  echo "$CURRENT_PID" > "$pid_file"
+
+  # Update spinner title with latest log line
+  while kill -0 "$CURRENT_PID" 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
+    if [ -s "$log_file" ]; then
+      local log_snippet=$(tail -n 1 "$log_file" | sed 's/[^[:print:]]//g' | head -c 40)
+      if [ -n "$log_snippet" ]; then
+        gum spin --spinner dot --title "$title: $log_snippet" -- sleep 0.5
+        echo "Log update: $log_snippet" >> "$debug_log"
+      else
+        gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+      fi
+    else
+      gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+    fi
+    # Check for errors
+    if ! check_log_for_errors "$log_file"; then
+      ERROR_DETECTED=1
+      kill -9 "$CURRENT_PID" 2>/dev/null
+      break
+    fi
+  done
+
+  # Wait for command to finish
+  wait "$CURRENT_PID"
+  local exit_status=$?
+
+  # Clean up pid file
+  rm -f "$pid_file"
+
+  echo "Command '$cmd' exited with status $exit_status" >> "$debug_log"
+
+  if [ $exit_status -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
+    local error_msg="❌ Error during: $title\nExit status: $exit_status"
+    if [ -s "$log_file" ]; then
+      local log_tail=$(tail -n 5 "$log_file" | sed 's/[^[:print:]]//g')
+      error_msg="$error_msg\nLog output (last 5 lines):\n$log_tail"
+    else
+      error_msg="$error_msg\nNo output captured in logs."
+    fi
+    gum style --foreground 1 --border normal --padding "1 2" "$error_msg"
+    exit 1
+  fi
+
+  gum style --foreground 10 "✅ $title completed."
 }
 
 # Execute selected tasks
-for item in $CHOICES; do
-  case "$item" in
+for choice in "${CHOICES[@]}"; do
+  [ $CANCELLED -eq 1 ] && break
+  gum style --foreground 34 "Processing: $choice"
+  case "$choice" in
     "Install system dependencies")
       run_step "Installing apt packages" "
         sudo apt-get update && sudo apt-get install -y \
@@ -180,8 +273,17 @@ for item in $CHOICES; do
       run_step "Checking OpenCV CUDA" "
         python3 -c 'import cv2; print(\"🚀 CUDA available:\", cv2.cuda.getCudaEnabledDeviceCount() > 0)'"
       ;;
+    *)
+      gum style --foreground 1 "❌ Unknown choice: $choice"
+      continue
+      ;;
   esac
 done
 
+if [ $CANCELLED -eq 1 ]; then
+  gum style --foreground 1 "❌ Installation cancelled."
+  exit 1
+fi
+
 gum style --border normal --foreground 10 --align center --padding "1 2" \
-"✅ All selected tasks completed!"
+  "✅ All selected tasks completed!"
