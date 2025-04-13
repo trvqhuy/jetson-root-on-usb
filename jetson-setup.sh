@@ -336,7 +336,7 @@ main_menu() {
         case $feature in
             1)
                 log "Starting USB root migration..."
-                status=$(setup_usb_root "$USB_NAME" "$CONFIRM" "$UPDATE_FSTAB" "$ARCH" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL setup_usb_root "$USB_NAME" "$CONFIRM" "$UPDATE_FSTAB" "$ARCH" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: USB root migration completed."
                 else
@@ -350,7 +350,7 @@ main_menu() {
                 ;;
             2)
                 log "Starting system backup..."
-                status=$(backup_system "$BACKUP_DIR" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL backup_system "$BACKUP_DIR" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: System backup completed."
                 else
@@ -364,7 +364,7 @@ main_menu() {
                 ;;
             3)
                 log "Starting system restore..."
-                status=$(restore_system "$RESTORE_SOURCE" "$RESTORE_TARGET" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL restore_system "$RESTORE_SOURCE" "$RESTORE_TARGET" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: System restore completed."
                 else
@@ -378,7 +378,7 @@ main_menu() {
                 ;;
             4)
                 log "Installing AI/ML libraries..."
-                status=$(install_ai_ml_libs "$AI_ML_LIBS" "$ARCH" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL install_ai_ml_libs "$AI_ML_LIBS" "$ARCH" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: AI/ML libraries installed."
                 else
@@ -392,7 +392,7 @@ main_menu() {
                 ;;
             5)
                 log "Installing Jupyter..."
-                status=$(install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: Jupyter installation completed."
                 else
@@ -406,7 +406,7 @@ main_menu() {
                 ;;
             6)
                 log "Optimizing system performance..."
-                status=$(optimize_performance "$ARCH" "$SWAP_CONFIRM" 2>&1 | tee -a "$LOGFILE")
+                status=$(stdbuf -oL optimize_performance "$ARCH" "$SWAP_CONFIRM" 2>&1 | tee -a "$LOGFILE")
                 if [ $? -eq 0 ]; then
                     dialog_status="Success: System performance optimization completed."
                 else
