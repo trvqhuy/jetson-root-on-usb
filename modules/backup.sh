@@ -1,26 +1,34 @@
 #!/bin/bash
 
 backup_system() {
-    local BACKUP_TARGET="$1"
-    local ARCH="$2"
+    local BACKUP_DIR="$1"
 
-    log "Starting full system backup..."
+    log "Starting system backup..."
 
-    if [ -z "$BACKUP_TARGET" ]; then
-        error_exit "No backup target directory specified."
+    # Validate input
+    if [ -z "$BACKUP_DIR" ]; then
+        log "No backup directory specified."
+        return 1
     fi
 
-    # Confirm destination exists
-    sudo mkdir -p "$BACKUP_TARGET"
-    sudo mount | grep "$BACKUP_TARGET" || warn "Ensure $BACKUP_TARGET is mounted."
+    # Ensure destination exists
+    sudo mkdir -p "$BACKUP_DIR" 2>&1 | tee -a "$LOGFILE" || {
+        log "Failed to create backup directory $BACKUP_DIR."
+        return 1
+    }
+    sudo mount | grep "$BACKUP_DIR" >/dev/null || warn "Backup directory $BACKUP_DIR is not mounted. Ensure it is accessible."
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    DEST="$BACKUP_TARGET/backup_$TIMESTAMP"
+    DEST="$BACKUP_DIR/backup_$TIMESTAMP"
 
-    log "Backing up / to $DEST ..."
+    log "Backing up system to $DEST..."
     sudo rsync -aAXH --info=progress2 \
         --exclude={"/proc","/sys","/dev","/run","/tmp","/mnt","/media","/lost+found"} \
-        / "$DEST" || error_exit "Backup failed."
+        / "$DEST" 2>&1 | tee -a "$LOGFILE" || {
+        log "Backup failed."
+        return 1
+    }
 
-    log "✅ Backup complete: $DEST"
+    log "System backup completed successfully: $DEST"
+    return 0
 }

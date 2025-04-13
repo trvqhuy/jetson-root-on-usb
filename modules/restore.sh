@@ -1,22 +1,30 @@
 #!/bin/bash
 
 restore_system() {
-    local BACKUP_SOURCE="$1"
-    local RESTORE_TARGET="$2"
+    local RESTORE_DIR="$1"
 
     log "Starting system restore..."
 
-    if [ -z "$BACKUP_SOURCE" ] || [ -z "$RESTORE_TARGET" ]; then
-        error_exit "Backup source or restore target not provided"
+    # Validate input
+    if [ -z "$RESTORE_DIR" ]; then
+        log "No restore directory specified."
+        return 1
     fi
 
-    # Confirm target is mounted
-    sudo mkdir -p "$RESTORE_TARGET"
-    sudo mount | grep "$RESTORE_TARGET" || warn "Ensure $RESTORE_TARGET is mounted"
+    # Confirm source exists
+    if [ ! -d "$RESTORE_DIR" ]; then
+        log "Restore directory $RESTORE_DIR does not exist."
+        return 1
+    fi
+    sudo mount | grep "$RESTORE_DIR" >/dev/null || warn "Restore directory $RESTORE_DIR is not mounted. Ensure it is accessible."
 
-    log "Restoring from $BACKUP_SOURCE to $RESTORE_TARGET..."
+    log "Restoring system from $RESTORE_DIR to /..."
     sudo rsync -aAXH --info=progress2 \
-        "$BACKUP_SOURCE"/ "$RESTORE_TARGET" || error_exit "Restore failed."
+        "$RESTORE_DIR"/ / 2>&1 | tee -a "$LOGFILE" || {
+        log "Restore failed."
+        return 1
+    }
 
-    log "✅ Restore complete to $RESTORE_TARGET"
+    log "System restore completed successfully."
+    return 0
 }
