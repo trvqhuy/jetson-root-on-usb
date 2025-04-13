@@ -245,6 +245,18 @@ main_menu() {
                         token "Fixed token (auto generated)" \
                         2>&1 >/dev/tty) || error_exit "Cancelled Jupyter access mode."
                     clear
+                    if [ "$JUPYTER_SECURE" = "password" ]; then
+                        JUPYTER_PASSWORD=$(dialog --insecure --passwordbox "Enter Jupyter password:" 10 50 2>&1 >/dev/tty) || error_exit "Password input cancelled."
+                        clear
+                        JUPYTER_PASSWORD2=$(dialog --insecure --passwordbox "Confirm password:" 10 50 2>&1 >/dev/tty) || error_exit "Password confirmation cancelled."
+                        clear
+
+                        if [ "$JUPYTER_PASSWORD" != "$JUPYTER_PASSWORD2" ]; then
+                            dialog --msgbox "Passwords do not match. Exiting." 8 40
+                            clear
+                            exit 1
+                        fi
+                    fi
                     ;;
 
 
@@ -259,7 +271,7 @@ main_menu() {
             2) backup_system "$BACKUP_DIR" ;;
             3) restore_system "$BACKUP_DIR" ;;
             4) install_ai_ml_libs "$AI_ML_LIBS" "$ARCH" ;;
-            5) install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" ;;
+            5) install_jupyter "$JUPYTER_TYPE" "$JUPYTER_PORT" "$ARCH" "$JUPYTER_BOOT" "$JUPYTER_SECURE" "$JUPYTER_PASSWORD" ;;
             6) optimize_performance "$ARCH" ;;
         esac
     done

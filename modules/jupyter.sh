@@ -5,7 +5,8 @@ install_jupyter() {
     local JUPYTER_PORT="$2"
     local ARCH="$3"
     local ENABLE_ON_BOOT="$4"
-    local SECURITY_MODE="$5"  # none | password | token
+    local SECURITY_MODE="$5"
+    local PASSWORD_RAW="$6"
 
     log "Installing Jupyter ($JUPYTER_TYPE) on port $JUPYTER_PORT..."
 
@@ -25,8 +26,8 @@ install_jupyter() {
 
     case "$SECURITY_MODE" in
         password)
-            log "Setting password-based access..."
-            JUPYTER_HASH=$(sudo -u "$USER" python3 -c "from notebook.auth import passwd; print(passwd())")
+            log "Hashing password from setup dialog..."
+            JUPYTER_HASH=$(sudo -u "$USER" python3 -c "from notebook.auth import passwd; print(passwd('$PASSWORD_RAW'))")
             sudo -u "$USER" bash -c "echo \"c.NotebookApp.password = '$JUPYTER_HASH'\" >> $CONFIG_DIR/jupyter_notebook_config.py"
             ;;
         token)
