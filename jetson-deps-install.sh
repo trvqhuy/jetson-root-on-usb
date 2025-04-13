@@ -1,2 +1,2 @@
 #!/bin/bash
-exec "$(dirname "$0")/main.sh" "$@"
+exec "sudo bash $(dirname "$0")/main.sh" "$@"
