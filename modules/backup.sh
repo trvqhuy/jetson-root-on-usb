@@ -1,23 +1,26 @@
 #!/bin/bash
 
 backup_system() {
-    local BACKUP_DIR="$1"
+    local BACKUP_TARGET="$1"
+    local ARCH="$2"
 
-    log "Starting system backup..."
+    log "Starting full system backup..."
 
-    # Validate input
-    if [ -z "$BACKUP_DIR" ]; then
-        error_exit "Backup directory not provided."
+    if [ -z "$BACKUP_TARGET" ]; then
+        error_exit "No backup target directory specified."
     fi
 
-    # Create backup file
-    BACKUP_FILE="$BACKUP_DIR/jetson_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
-    sudo mkdir -p "$BACKUP_DIR" || error_exit "Failed to create backup directory."
+    # Confirm destination exists
+    sudo mkdir -p "$BACKUP_TARGET"
+    sudo mount | grep "$BACKUP_TARGET" || warn "Ensure $BACKUP_TARGET is mounted."
 
-    # Create backup
-    log "Creating backup to $BACKUP_FILE..."
-    sudo tar --exclude={"/mnt","/proc","/sys","/dev","/tmp","/run","/media","/lost+found"} \
-        -czf "$BACKUP_FILE" / >> "$LOGFILE" 2>&1 || error_exit "Failed to create backup."
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    DEST="$BACKUP_TARGET/backup_$TIMESTAMP"
 
-    log "System backup completed: $BACKUP_FILE"
+    log "Backing up / to $DEST ..."
+    sudo rsync -aAXH --info=progress2 \
+        --exclude={"/proc","/sys","/dev","/run","/tmp","/mnt","/media","/lost+found"} \
+        / "$DEST" || error_exit "Backup failed."
+
+    log "✅ Backup complete: $DEST"
 }

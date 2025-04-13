@@ -159,21 +159,63 @@ main_menu() {
 
                     if [ "$ARCH" != "aarch64" ]; then
                         dialog --msgbox "Non-Jetson detected. Simulating only." 8 50
+                        clear
                         CONFIRM="no"
                     else
                         dialog --yesno "Erase ALL data on /dev/$USB_NAME?" 8 50 && CONFIRM="yes" || CONFIRM="no"
+                        clear
                         dialog --yesno "Update /etc/fstab on USB?" 8 50 && UPDATE_FSTAB="yes" || UPDATE_FSTAB="no"
+                        clear
                     fi
                     ;;
 
                 2)
-                    BACKUP_DIR=$(dialog --inputbox "Enter backup directory:" 8 50 "/mnt/usb/backup" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
+                    # List mounted drives under /mnt or /media
+                    MOUNTED_DEVICES=$(lsblk -o NAME,MOUNTPOINT | grep -E '/mnt|/media' | awk '$2!=""')
+                    CHOICES=()
+
+                    while read -r name mountpoint; do
+                        device="/dev/$name"
+                        CHOICES+=("$mountpoint" "$device")
+                    done <<< "$MOUNTED_DEVICES"
+
+                    if [ ${#CHOICES[@]} -eq 0 ]; then
+                        dialog --msgbox "No mounted USB/SD devices found under /mnt or /media.\nPlease mount a backup destination and try again." 10 60
+                        clear
+                        exit 1
+                    fi
+
+                    BACKUP_TARGET=$(dialog --menu "Select where to save the system backup:" 15 60 6 "${CHOICES[@]}" 2>&1 >/dev/tty) || error_exit "Cancelled."
                     clear
                     ;;
+
+
                 3)
-                    BACKUP_DIR=$(dialog --inputbox "Enter backup directory to select file:" 8 50 "/mnt/usb/backup" 2>&1 >/dev/tty) || error_exit "Cancelled backup directory input."
+                    # Step 1: Select backup device
+                    BACKUP_DEV_LIST=$(lsblk -o NAME,MOUNTPOINT | grep -E '/mnt|/media' | awk '$2!=""')
+                    CHOICES=()
+                    while read -r name mountpoint; do
+                        CHOICES+=("$mountpoint" "/dev/$name")
+                    done <<< "$BACKUP_DEV_LIST"
+
+                    if [ ${#CHOICES[@]} -eq 0 ]; then
+                        dialog --msgbox "No mounted devices with backups found." 8 50
+                        clear
+                        exit 1
+                    fi
+
+                    BACKUP_PARENT=$(dialog --menu "Select drive where backup is stored:" 15 60 6 "${CHOICES[@]}" 2>&1 >/dev/tty) || error_exit "Cancelled backup device selection."
+                    clear
+
+                    # Step 2: Select folder inside that path
+                    BACKUP_SOURCE=$(dialog --dselect "$BACKUP_PARENT/" 15 60 2>&1 >/dev/tty) || error_exit "Cancelled folder selection."
+                    clear
+
+                    # Step 3: Select restore target
+                    RESTORE_TARGET=$(dialog --inputbox "Enter path to restore to (must be mounted, e.g. /mnt/usb):" 8 60 "/mnt/usb" 2>&1 >/dev/tty) || error_exit "Cancelled restore target."
                     clear
                     ;;
+
                 4)
                     AI_ML_LIBS=$(dialog --checklist "Select AI/ML libraries:" 15 50 5 \
                         numpy "NumPy" on \
@@ -183,15 +225,29 @@ main_menu() {
                         2>&1 >/dev/tty) || error_exit "Cancelled library selection."
                     clear
                     ;;
+
                 5)
                     JUPYTER_TYPE=$(dialog --menu "Select Jupyter type:" 10 40 2 \
                         notebook "Jupyter Notebook" \
                         lab "JupyterLab" \
-                        2>&1 >/dev/tty) || error_exit "Cancelled Jupyter type selection."
+                        2>&1 >/dev/tty) || error_exit "Cancelled."
                     clear
-                    JUPYTER_PORT=$(dialog --inputbox "Enter Jupyter port:" 8 40 "8888" 2>&1 >/dev/tty) || error_exit "Cancelled port input."
+
+                    JUPYTER_PORT=$(dialog --inputbox "Enter Jupyter port:" 8 40 "8888" 2>&1 >/dev/tty) || error_exit "Cancelled."
+                    clear
+
+                    dialog --yesno "Start Jupyter on boot?" 8 50 && JUPYTER_BOOT="yes" || JUPYTER_BOOT="no"
+                    clear
+
+                    JUPYTER_SECURE=$(dialog --menu "Select Jupyter access mode:" 12 60 3 \
+                        none "No password, no token (insecure)" \
+                        password "Password protected" \
+                        token "Fixed token (auto generated)" \
+                        2>&1 >/dev/tty) || error_exit "Cancelled Jupyter access mode."
                     clear
                     ;;
+
+
             esac
         done
     fi
