@@ -34,8 +34,7 @@ cleanup() {
   fi
   if [ -n "$log_file" ] && [ -f "$log_file" ]; then
     echo "Cleaning up log file: $log_file" >> /tmp/install_debug_$$.log
-    # Keep for debugging; uncomment to clean up
-    # rm -f "$log_file"
+    rm -f "$log_file"
   fi
 }
 
@@ -62,11 +61,6 @@ run_step() {
 
   # Single gauge for all sub-commands
   (
-    echo "XXX"
-    echo "0"
-    echo "$message"
-    echo "XXX"
-
     for cmd in "${commands[@]}"; do
       # Check for cancellation
       if [ $CANCELLED -eq 1 ]; then
@@ -77,33 +71,41 @@ run_step() {
         exit 1
       fi
 
+      # Initialize progress for this sub-task
+      echo "XXX"
+      echo "$current_progress"
+      echo "$message"
+      echo "XXX"
+      echo "Progress update: $current_progress for '$cmd'" >> "$debug_log"
+
       # Execute sub-command with real-time logging
       echo "Running: $cmd" >> "$log_file"
       stdbuf -oL eval "$cmd" 2>&1 | tee -a "$log_file" &
       CURRENT_PID=$!
       local pid=$CURRENT_PID
 
-      # Update progress and logs while command runs
+      # Update logs while command runs
       while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ]; do
         if [ -s "$log_file" ]; then
           local log_snippet=$(tail -n 1 "$log_file")
-          # Minimal sanitization, limit to 40 chars
+          # Sanitize: remove non-printable, limit to 40 chars
           log_snippet=$(echo "$log_snippet" | sed 's/[^[:print:]]//g' | head -c 40)
           if [ -n "$log_snippet" ]; then
             echo "XXX"
             echo "$current_progress"
             echo "$message\nLog: $log_snippet"
             echo "XXX"
+            echo "Log update: $log_snippet" >> "$debug_log"
           fi
         fi
-        sleep 0.5
+        sleep 1
       done
 
       # Wait for command to finish
       wait $pid
       local exit_status=$?
 
-      echo "Command '$cmd' exited with status $exit_status" >> "$debug_log"
+      echo "Command '$cmd' exited with status $exit_status, progress: $current_progress" >> "$debug_log"
 
       if [ $exit_status -ne 0 ]; then
         echo "XXX"
@@ -122,6 +124,7 @@ run_step() {
       echo "$current_progress"
       echo "$message"
       echo "XXX"
+      echo "Progress incremented to: $current_progress" >> "$debug_log"
     done
 
     # Final progress
@@ -169,8 +172,7 @@ run_step() {
 
   # Clean up log file
   echo "Removing log file: $log_file" >> "$debug_log"
-  # Keep for debugging; uncomment to clean up
-  # rm -f "$log_file"
+  rm -f "$log_file"
 }
 
 # Show welcome message
@@ -228,7 +230,7 @@ for choice in $CHOICES; do
     4)
       run_step "Installing ML & CV libraries" \
         "python3 -m pip install scikit-learn==0.24.2" \
-        "python3 -m pip install scikit-image==0.16.2" \
+        "python3 -m pip install scikit-image==0.17.2" \
         "python3 -m pip install pillow==8.4.0" \
         "python3 -m pip install tqdm==4.62.3"
       ;;
