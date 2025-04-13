@@ -118,24 +118,24 @@ gum style --border double --margin "1 2" --padding "1 2" --foreground 212 --alig
   "Use ↑ ↓ to navigate, Space to select, Enter to confirm"
 
 # Define choices
-CHOICES=($(gum choose --no-limit --selected "Install system dependencies" \
+CHOICES=$(gum choose --no-limit \
   "Install system dependencies" \
   "Install Python build tools" \
   "Install scientific libraries" \
   "Install ML & CV libraries" \
   "Install EasyOCR" \
   "Install web stack" \
-  "Check OpenCV CUDA support"))
+  "Check OpenCV CUDA support")
 
 # Check if user cancelled or selected nothing
-if [ ${#CHOICES[@]} -eq 0 ]; then
+if [ -z "$CHOICES" ]; then
   gum style --foreground 1 "❌ No options selected. Exiting."
   exit 1
 fi
 
 # Log selected choices for debugging
 debug_log="/tmp/install_debug_$$.log"
-echo "Selected choices: ${CHOICES[*]}" >> "$debug_log"
+echo "Selected choices: $CHOICES" >> "$debug_log"
 
 # Flag to track cancellation
 CANCELLED=0
@@ -232,7 +232,8 @@ run_step() {
 }
 
 # Execute selected tasks
-for choice in "${CHOICES[@]}"; do
+IFS=$'\n' # Split choices on newlines
+for choice in $CHOICES; do
   [ $CANCELLED -eq 1 ] && break
   gum style --foreground 34 "Processing: $choice"
   case "$choice" in
