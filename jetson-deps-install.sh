@@ -46,8 +46,8 @@ trap 'cleanup; echo "Installation cancelled by user via Ctrl+C."; whiptail --tit
 check_log_for_errors() {
   local log_file=$1
   if [ -s "$log_file" ]; then
-    # Look for common error patterns (case-insensitive)
-    if grep -iE "error|failed|no such file|unable to|cannot" "$log_file" >/dev/null; then
+    # Specific error patterns
+    if grep -iE "E: Unable to locate package|failed to run|error:|no such file|cannot" "$log_file" >/dev/null; then
       return 1 # Error found
     fi
   fi
@@ -78,22 +78,12 @@ run_step() {
     for cmd in "${commands[@]}"; do
       # Check for cancellation or prior error
       if [ $CANCELLED -eq 1 ] || [ $ERROR_DETECTED -eq 1 ]; then
-        echo "XXX"
-        echo "$current_progress"
-        if [ $CANCELLED -eq 1 ]; then
-          echo "$message - Cancelled!"
-        else
-          echo "$message - Error detected!"
-        fi
-        echo "XXX"
+        echo -e "XXX\n$current_progress\n$message - ${CANCELLED:+Cancelled!}${ERROR_DETECTED:+Error detected!}\nXXX"
         exit 1
       fi
 
       # Initialize progress for this sub-task
-      echo "XXX"
-      echo "$current_progress"
-      echo "$message"
-      echo "XXX"
+      echo -e "XXX\n$current_progress\n$message\nXXX"
       echo "Progress update: $current_progress for '$cmd'" >> "$debug_log"
 
       # Execute sub-command with real-time logging
@@ -102,31 +92,29 @@ run_step() {
       CURRENT_PID=$!
       local pid=$CURRENT_PID
 
-      # Update logs and check for errors while command runs
+      # Update logs while command runs
       while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
         if [ -s "$log_file" ]; then
           local log_snippet=$(tail -n 1 "$log_file")
-          # Sanitize: remove non-printable, limit to 40 chars
-          log_snippet=$(echo "$log_snippet" | sed 's/[^[:print:]]//g' | head -c 40)
+          # Sanitize: keep printable chars, limit to 40
+          log_snippet=$(echo "$log_snippet" | sed 's/[^a-zA-Z0-9 .:\/_-]//g' | head -c 40)
           if [ -n "$log_snippet" ]; then
-            echo "XXX"
-            echo "$current_progress"
-            echo "$message\nLog: $log_snippet"
-            echo "XXX"
+            echo -e "XXX\n$current_progress\n$message\nLog: $log_snippet\nXXX"
             echo "Log update: $log_snippet" >> "$debug_log"
+          else
+            echo "Log update: empty snippet" >> "$debug_log"
           fi
-          # Check logs for errors
-          if ! check_log_for_errors "$log_file"; then
-            ERROR_DETECTED=1
-            echo "XXX"
-            echo "$current_progress"
-            echo "$message - Error detected in logs!"
-            echo "XXX"
-            kill -9 $pid 2>/dev/null
-            exit 1
-          fi
+        else
+          echo "Log update: log file empty" >> "$debug_log"
         fi
-        sleep 1
+        # Check logs for errors after displaying snippet
+        if ! check_log_for_errors "$log_file"; then
+          ERROR_DETECTED=1
+          echo -e "XXX\n$current_progress\n$message - Error detected in logs!\nXXX"
+          kill -9 $pid 2>/dev/null
+          exit 1
+        fi
+        sleep 0.5
       done
 
       # Wait for command to finish
@@ -136,10 +124,7 @@ run_step() {
       echo "Command '$cmd' exited with status $exit_status, progress: $current_progress" >> "$debug_log"
 
       if [ $exit_status -ne 0 ] || [ $ERROR_DETECTED -eq 1 ]; then
-        echo "XXX"
-        echo "$current_progress"
-        echo "$message - Failed: $cmd"
-        echo "XXX"
+        echo -e "XXX\n$current_progress\n$message - Failed: $cmd\nXXX"
         exit $exit_status
       fi
 
@@ -148,18 +133,12 @@ run_step() {
       if [ $current_progress -gt 100 ]; then
         current_progress=100
       fi
-      echo "XXX"
-      echo "$current_progress"
-      echo "$message"
-      echo "XXX"
+      echo -e "XXX\n$current_progress\n$message\nXXX"
       echo "Progress incremented to: $current_progress" >> "$debug_log"
     done
 
     # Final progress
-    echo "XXX"
-    echo "100"
-    echo "$message - Completed successfully!"
-    echo "XXX"
+    echo -e "XXX\n100\n$message - Completed successfully!\nXXX"
   ) | whiptail --title "$TITLE" --gauge "$message" 8 60 0
 
   # Check exit statuses
