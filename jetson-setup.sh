@@ -97,6 +97,7 @@ main_menu() {
         FEATURES="1 2 3 4 5 6"
         log "Headless mode: Running all features with config defaults."
     else
+        log "Interactive mode: Prompt for feature selections."
         # Interactive mode: Prompt for feature selection
         FEATURES=$(dialog --checklist "Select features to set up:" 20 60 10 \
             1 "Migrate root to USB" off \
