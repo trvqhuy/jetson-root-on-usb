@@ -144,7 +144,26 @@ main_menu() {
         for feature in $FEATURES; do
             case $feature in
                 1)
-                    USB_NAME=$(dialog --inputbox "Enter USB device name (e.g., sda):" 8 40 "sda" 2>&1 >/dev/tty) || error_exit "Cancelled USB device input."
+                    # Dynamically detect USB devices (excluding internal mmcblk and loop)
+                    DEVICE_LIST=$(lsblk -dpno NAME,MODEL,SIZE,TYPE | grep -E 'disk' | grep -v 'mmcblk\|loop')
+
+                    # Format for dialog: device_name "description"
+                    CHOICES=()
+                    while IFS= read -r line; do
+                    DEVICE=$(echo "$line" | awk '{print $1}')
+                    DESC=$(echo "$line" | sed "s|$DEVICE||")
+                    CHOICES+=("$DEVICE" "$DESC")
+                    done <<< "$DEVICE_LIST"
+
+                    USB_NAME=$(dialog --clear --title "Select USB device" \
+                    --menu "Choose the USB device to migrate root to:" 15 60 6 \
+                    "${CHOICES[@]}" \
+                    2>&1 >/dev/tty) || error_exit "Cancelled USB device selection."
+                    clear
+
+                    # Strip leading /dev/ from device name for consistency with rest of script
+                    USB_NAME=$(basename "$USB_NAME")
+
                     clear
                     if [ "$ARCH" != "aarch64" ]; then
                         dialog --msgbox "Warning: USB root migration is Jetson-specific. On $ARCH, this will simulate the process (no actual changes)." 10 60 || log "Dialog warning failed to display."
