@@ -172,7 +172,7 @@ fix_apt_sources() {
   # Remove invalid apt.fury.io/charm source if present
   if grep -q "apt.fury.io/charm" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null; then
     echo "🛠️ Removing invalid apt.fury.io/charm source..." >&2
-    sudo find /etc/apt/sources.list.d/ -type f -name "*.list" -exec grep -l "apt.fury.io/charm" {} \; -delete
+    sudo find /etc/apt/sources.list.d/ -type f -name "*.list" -exec grep -l "apt.fury.io/charm" {} \; -delete 2>/dev/null
     sudo sed -i '/apt.fury.io\/charm/d' /etc/apt/sources.list 2>/dev/null
   fi
 }
@@ -192,9 +192,18 @@ run_step() {
   echo "Starting: $title" >> "$debug_log"
 
   # Run command in background with logging, suppressing terminal output
-  eval "$cmd" >"$log_file" 2>&1 &
-  CURRENT_PID=$!
-  echo "$CURRENT_PID" > "$pid_file"
+  for i in {1..3}; do
+    eval "$cmd" >"$log_file" 2>&1 &
+    CURRENT_PID=$!
+    echo "$CURRENT_PID" > "$pid_file"
+    wait "$CURRENT_PID"
+    local cmd_status=$?
+    if [ $cmd_status -eq 0 ]; then
+      break
+    fi
+    echo "⚠️ Retry $i for '$title' failed, retrying..." >> "$debug_log"
+    sleep 1
+  done
 
   # Update spinner title with latest log line
   while kill -0 "$CURRENT_PID" 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
@@ -217,8 +226,8 @@ run_step() {
     fi
   done
 
-  # Wait for command to finish
-  wait "$CURRENT_PID"
+  # Wait for command to finish (if not already killed)
+  wait "$CURRENT_PID" 2>/dev/null
   local exit_status=$?
 
   # Clean up pid file
@@ -230,11 +239,11 @@ run_step() {
     error_msg=$(printf "❌ Error during: %s\nExit status: %d\nLog output (last 5 lines):\n" "$title" "$exit_status")
     if [ -s "$log_file" ]; then
       local log_tail=$(tail -n 5 "$log_file" | sed 's/[^[:print:]]//g')
-      error_msg=$(printf "%s%s" "$error_msg" "$log_tail")
+      error_msg=$(printf "%s%s\n\nFor geckodriver, try manual installation:\nwget https://github.com/mozilla/geckodriver/releases/download/v0.31.0/geckodriver-v0.31.0-linux-aarch64.tar.gz\ntar -xzf geckodriver-v0.31.0-linux-aarch64.tar.gz\nsudo mv geckodriver /usr/local/bin/" "$error_msg" "$log_tail")
     else
       error_msg=$(printf "%sNo output captured in logs." "$error_msg")
     fi
-    gum write --header "Error" -- "$error_msg"
+    gum style --border normal --padding "1 2" --foreground 1 "$error_msg"
     exit 1
   fi
 
@@ -252,11 +261,11 @@ for choice in $CHOICES; do
   case "$choice" in
     "Install system dependencies")
       run_step "Installing apt packages" "
-        sudo apt-get update && sudo apt-get install -y \
+        for i in {1..3}; do sudo apt-get update && break; sleep 1; done && sudo apt-get install -y \
         python3-pip python3-virtualenv \
         libjpeg-dev libopenblas-base libopenmpi-dev libomp-dev \
         build-essential cmake gfortran libatlas-base-dev \
-        chromium-chromedriver firefox geckodriver \
+        chromium-chromedriver firefox \
         libtiff5-dev libavcodec-dev libavformat-dev libswscale-dev \
         libgtk2.0-dev libcanberra-gtk* libxvidcore-dev libx264-dev \
         libgtk-3-dev libhdf5-serial-dev libqtgui4 libqtwebkit4 libqt4-test \
