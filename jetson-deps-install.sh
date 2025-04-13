@@ -35,7 +35,7 @@ cleanup() {
   if [ -n "$log_file" ] && [ -f "$log_file" ]; then
     echo "Cleaning up log file: $log_file" >> /tmp/install_debug_$$.log
     # Keep for debugging; uncomment to clean up
-    rm -f "$log_file"
+    # rm -f "$log_file"
   fi
 }
 
@@ -60,52 +60,48 @@ run_step() {
   local progress_increment=$((100 / num_commands))
   local current_progress=0
 
-  # Run commands with progress updates
-  for cmd in "${commands[@]}"; do
-    # Check for cancellation
-    if [ $CANCELLED -eq 1 ]; then
-      whiptail --title "$TITLE" --msgbox "Installation cancelled by user." 8 50
-      exit 1
-    fi
+  # Single gauge for all sub-commands
+  (
+    echo "XXX"
+    echo "0"
+    echo "$message"
+    echo "XXX"
 
-    # Start gauge for this sub-command
-    (
-      echo "XXX"
-      echo "$current_progress"
-      echo "$message"
-      echo "XXX"
+    for cmd in "${commands[@]}"; do
+      # Check for cancellation
+      if [ $CANCELLED -eq 1 ]; then
+        echo "XXX"
+        echo "$current_progress"
+        echo "$message - Cancelled!"
+        echo "XXX"
+        exit 1
+      fi
 
-      # Start log monitoring in background
-      local log_pid
-      ( while [ -e /proc/$$ ]; do
-          if [ -s "$log_file" ]; then
-            local log_snippet=$(tail -n 1 "$log_file")
-            # Sanitize: keep printable chars, limit to 40
-            log_snippet=$(echo "$log_snippet" | tr -dc '[:print:]' | head -c 40)
-            if [ -n "$log_snippet" ]; then
-              echo "XXX"
-              echo "$current_progress"
-              echo "$message\nLog: $log_snippet"
-              echo "XXX"
-            fi
-          fi
-          sleep 1
-        done
-      ) &
-      log_pid=$!
-
-      # Execute sub-command with tee for real-time logging
-      echo "Running: $cmd" | tee -a "$log_file"
-      eval "$cmd" 2>&1 | tee -a "$log_file" &
+      # Execute sub-command with real-time logging
+      echo "Running: $cmd" >> "$log_file"
+      stdbuf -oL eval "$cmd" 2>&1 | tee -a "$log_file" &
       CURRENT_PID=$!
       local pid=$CURRENT_PID
+
+      # Update progress and logs while command runs
+      while kill -0 $pid 2>/dev/null && [ $CANCELLED -eq 0 ]; do
+        if [ -s "$log_file" ]; then
+          local log_snippet=$(tail -n 1 "$log_file")
+          # Minimal sanitization, limit to 40 chars
+          log_snippet=$(echo "$log_snippet" | sed 's/[^[:print:]]//g' | head -c 40)
+          if [ -n "$log_snippet" ]; then
+            echo "XXX"
+            echo "$current_progress"
+            echo "$message\nLog: $log_snippet"
+            echo "XXX"
+          fi
+        fi
+        sleep 0.5
+      done
 
       # Wait for command to finish
       wait $pid
       local exit_status=$?
-
-      # Stop log monitoring
-      kill $log_pid 2>/dev/null
 
       echo "Command '$cmd' exited with status $exit_status" >> "$debug_log"
 
@@ -126,39 +122,42 @@ run_step() {
       echo "$current_progress"
       echo "$message"
       echo "XXX"
-    ) | whiptail --title "$TITLE" --gauge "$message" 8 60 "$current_progress"
+    done
 
-    # Check exit statuses
-    local gauge_exit=${PIPESTATUS[0]}
-    local cmd_exit=${PIPESTATUS[1]}
+    # Final progress
+    echo "XXX"
+    echo "100"
+    echo "$message - Completed successfully!"
+    echo "XXX"
+  ) | whiptail --title "$TITLE" --gauge "$message" 8 60 0
 
-    echo "Gauge exit: $gauge_exit, Command exit: $cmd_exit" >> "$debug_log"
+  # Check exit statuses
+  local gauge_exit=${PIPESTATUS[0]}
+  local cmd_exit=${PIPESTATUS[1]}
 
-    # Handle cancellation
-    if [ $CANCELLED -eq 1 ]; then
-      whiptail --title "$TITLE" --msgbox "Installation cancelled by user." 8 50
-      exit 1
+  echo "Gauge exit: $gauge_exit, Command exit: $cmd_exit" >> "$debug_log"
+
+  # Handle cancellation
+  if [ $CANCELLED -eq 1 ]; then
+    whiptail --title "$TITLE" --msgbox "Installation cancelled by user." 8 50
+    exit 1
+  fi
+
+  # Handle command or gauge failure
+  if [ $cmd_exit -ne 0 ] || [ $gauge_exit -ne 0 ]; then
+    local error_msg="Error during: $message\nFailed command: ${cmd:-unknown}\nExit status: $cmd_exit"
+    if [ $cmd_exit -ne 0 ]; then
+      error_msg="$error_msg\nTry running 'apt-get update' or 'apt-get --fix-broken install' to resolve."
     fi
-
-    # Handle command or gauge failure
-    if [ $cmd_exit -ne 0 ] || [ $gauge_exit -ne 0 ]; then
-      local error_msg="Error during: $message\nFailed command: $cmd\nExit status: $cmd_exit"
-      if [ $cmd_exit -ne 0 ]; then
-        error_msg="$error_msg\nTry running 'apt-get update' or 'apt-get --fix-broken install' to resolve."
-      fi
-      if [ -s "$log_file" ]; then
-        local log_tail=$(tail -n 5 "$log_file" | sed 's/[^a-zA-Z0-9.\/_-]/\\&/g')
-        error_msg="$error_msg\nLog output (last 5 lines):\n\n$log_tail"
-      else
-        error_msg="$error_msg\nNo output captured in logs."
-      fi
-      whiptail --title "$TITLE" --msgbox "$error_msg" 18 70
-      exit 1
+    if [ -s "$log_file" ]; then
+      local log_tail=$(tail -n 5 "$log_file" | sed 's/[^a-zA-Z0-9.\/_-]/\\&/g')
+      error_msg="$error_msg\nLog output (last 5 lines):\n\n$log_tail"
+    else
+      error_msg="$error_msg\nNo output captured in logs."
     fi
-  done
-
-  # Final gauge update
-  whiptail --title "$TITLE" --gauge "$message - Completed successfully!" 8 60 100 --sleep 1
+    whiptail --title "$TITLE" --msgbox "$error_msg" 18 70
+    exit 1
+  fi
 
   # Display last 5 lines of log
   if [ -s "$log_file" ]; then
@@ -170,7 +169,8 @@ run_step() {
 
   # Clean up log file
   echo "Removing log file: $log_file" >> "$debug_log"
-  rm -f "$log_file"
+  # Keep for debugging; uncomment to clean up
+  # rm -f "$log_file"
 }
 
 # Show welcome message
