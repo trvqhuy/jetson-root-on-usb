@@ -191,19 +191,10 @@ run_step() {
   > "$log_file"
   echo "Starting: $title" >> "$debug_log"
 
-  # Run command in background with logging, suppressing terminal output
-  for i in {1..3}; do
-    eval "$cmd" >"$log_file" 2>&1 &
-    CURRENT_PID=$!
-    echo "$CURRENT_PID" > "$pid_file"
-    wait "$CURRENT_PID"
-    local cmd_status=$?
-    if [ $cmd_status -eq 0 ]; then
-      break
-    fi
-    echo "⚠️ Retry $i for '$title' failed, retrying..." >> "$debug_log"
-    sleep 1
-  done
+  # Run command in background with logging
+  stdbuf -oL eval "$cmd" 2>&1 | tee -a "$log_file" &
+  CURRENT_PID=$!
+  echo "$CURRENT_PID" > "$pid_file"
 
   # Update spinner title with latest log line
   while kill -0 "$CURRENT_PID" 2>/dev/null && [ $CANCELLED -eq 0 ] && [ $ERROR_DETECTED -eq 0 ]; do
@@ -214,9 +205,11 @@ run_step() {
         echo "Log update: $log_snippet" >> "$debug_log"
       else
         gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+        echo "Log update: empty snippet" >> "$debug_log"
       fi
     else
       gum spin --spinner dot --title "$title: Waiting for output..." -- sleep 0.5
+      echo "Log update: log file empty" >> "$debug_log"
     fi
     # Check for errors
     if ! check_log_for_errors "$log_file"; then
@@ -226,7 +219,7 @@ run_step() {
     fi
   done
 
-  # Wait for command to finish (if not already killed)
+  # Wait for command to finish
   wait "$CURRENT_PID" 2>/dev/null
   local exit_status=$?
 
@@ -239,7 +232,7 @@ run_step() {
     error_msg=$(printf "❌ Error during: %s\nExit status: %d\nLog output (last 5 lines):\n" "$title" "$exit_status")
     if [ -s "$log_file" ]; then
       local log_tail=$(tail -n 5 "$log_file" | sed 's/[^[:print:]]//g')
-      error_msg=$(printf "%s%s\n\nFor geckodriver, try manual installation:\nwget https://github.com/mozilla/geckodriver/releases/download/v0.31.0/geckodriver-v0.31.0-linux-aarch64.tar.gz\ntar -xzf geckodriver-v0.31.0-linux-aarch64.tar.gz\nsudo mv geckodriver /usr/local/bin/" "$error_msg" "$log_tail")
+      error_msg=$(printf "%s%s" "$error_msg" "$log_tail")
     else
       error_msg=$(printf "%sNo output captured in logs." "$error_msg")
     fi
@@ -304,7 +297,7 @@ for choice in $CHOICES; do
 done
 
 if [ $CANCELLED -eq 1 ]; then
-  gum style --foreground 1 "❌ Installation cancelled."
+  gum style --foreground 1 "❌ Installation-cancelled."
   exit 1
 fi
 
