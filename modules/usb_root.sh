@@ -64,7 +64,7 @@ setup_usb_root() {
     if [ ! -b "$USB_DEV" ]; then
         log "Device $USB_DEV does not exist or is not a block device."
         return 1
-    }
+    fi
 
     # Unmount partitions
     log "Unmounting partitions on $USB_DEV..."
